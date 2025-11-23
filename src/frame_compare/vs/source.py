@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
@@ -415,6 +416,7 @@ def _maybe_inject_dovi_metadata(clip: Any, core: Any, file_path: str, trim_start
         return clip
 
     try:
+        print("Extracting Dolby Vision metadata... this may take a minute", file=sys.stderr)
         metadata = dovi_tool.extract_rpu_metadata(Path(file_path))
         if not metadata:
             return clip
@@ -438,6 +440,23 @@ def _maybe_inject_dovi_metadata(clip: Any, core: Any, file_path: str, trim_start
                     fout.props["DolbyVision_L1_Average"] = float(data["l1_avg_nits"])
                 if "l1_max_nits" in data:
                     fout.props["DolbyVision_L1_Maximum"] = float(data["l1_max_nits"])
+
+                if "l2_target_nits" in data:
+                    fout.props["DolbyVision_L2_TargetNits"] = float(data["l2_target_nits"])
+
+                if "l5_left" in data:
+                    fout.props["DolbyVision_L5_Left"] = int(data["l5_left"])
+                if "l5_right" in data:
+                    fout.props["DolbyVision_L5_Right"] = int(data["l5_right"])
+                if "l5_top" in data:
+                    fout.props["DolbyVision_L5_Top"] = int(data["l5_top"])
+                if "l5_bottom" in data:
+                    fout.props["DolbyVision_L5_Bottom"] = int(data["l5_bottom"])
+
+                if "l6_max_cll" in data:
+                    fout.props["DolbyVision_L6_MaxCLL"] = float(data["l6_max_cll"])
+                if "l6_max_fall" in data:
+                    fout.props["DolbyVision_L6_MaxFALL"] = float(data["l6_max_fall"])
                 # Also inject RPU present flag if not already there, to trigger overlay
                 if "DolbyVisionRPU" not in fout.props:
                      fout.props["DolbyVisionRPU"] = b"1" # Dummy blob to signal presence

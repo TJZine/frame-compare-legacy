@@ -191,60 +191,101 @@ class DoviToolService:
                 rpu = cast(Dict[str, Any], frame.get("rpu", {})) # pyright: ignore[reportUnknownMemberType]
                 vdr_dm = cast(Dict[str, Any], rpu.get("vdr_dm_data", {})) # pyright: ignore[reportUnknownMemberType]
 
-            # Try to find Level 1 in various locations
+            # Try to find Level 1, 2, 5, 6 in various locations
             l1: Dict[str, Any] = {}
+            l2: Dict[str, Any] = {}
+            l5: Dict[str, Any] = {}
+            l6: Dict[str, Any] = {}
 
             # 1. Direct 'level1' in vdr_dm_data (some versions)
             if "level1" in vdr_dm:
                 l1 = cast(Dict[str, Any], vdr_dm.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
 
             # 2. Inside cmv29_metadata (v2.9)
-            if not l1 and "cmv29_metadata" in vdr_dm:
+            if "cmv29_metadata" in vdr_dm:
                 cmv29 = cast(Dict[str, Any], vdr_dm.get("cmv29_metadata", {})) # pyright: ignore[reportUnknownMemberType]
 
-                # Try to find Level1 in ext_metadata_blocks
+                if not l1: # Only try to get direct level1 if not already found in vdr_dm_data
+                    l1 = cast(Dict[str, Any], cmv29.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+
+                # Try to find Levels in ext_metadata_blocks
                 if "ext_metadata_blocks" in cmv29:
                     blocks = cast(List[Any], cmv29["ext_metadata_blocks"])
                     for block in blocks:
-                        if isinstance(block, dict) and "Level1" in block:
-                            l1 = cast(Dict[str, Any], block["Level1"])
-                            break
-
-                if not l1:
-                    l1 = cast(Dict[str, Any], cmv29.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+                        if isinstance(block, dict):
+                            if "Level1" in block:
+                                l1 = cast(Dict[str, Any], block["Level1"])
+                            elif "Level2" in block:
+                                l2 = cast(Dict[str, Any], block["Level2"])
+                            elif "Level5" in block:
+                                l5 = cast(Dict[str, Any], block["Level5"])
+                            elif "Level6" in block:
+                                l6 = cast(Dict[str, Any], block["Level6"])
 
             # 3. Inside cmv40_metadata (v4.0)
-            if not l1 and "cmv40_metadata" in vdr_dm:
+            if "cmv40_metadata" in vdr_dm:
                 cmv40 = cast(Dict[str, Any], vdr_dm.get("cmv40_metadata", {})) # pyright: ignore[reportUnknownMemberType]
 
-                # Try to find Level1 in ext_metadata_blocks
+                if not l1: # Only try to get direct level1 if not already found in vdr_dm_data
+                    l1 = cast(Dict[str, Any], cmv40.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+
+                # Try to find Levels in ext_metadata_blocks
                 if "ext_metadata_blocks" in cmv40:
                     blocks = cast(List[Any], cmv40["ext_metadata_blocks"])
                     for block in blocks:
-                        if isinstance(block, dict) and "Level1" in block:
-                            l1 = cast(Dict[str, Any], block["Level1"])
-                            break
+                        if isinstance(block, dict):
+                            if "Level1" in block:
+                                l1 = cast(Dict[str, Any], block["Level1"])
+                            elif "Level2" in block:
+                                l2 = cast(Dict[str, Any], block["Level2"])
+                            elif "Level5" in block:
+                                l5 = cast(Dict[str, Any], block["Level5"])
+                            elif "Level6" in block:
+                                l6 = cast(Dict[str, Any], block["Level6"])
 
-                if not l1:
-                    l1 = cast(Dict[str, Any], cmv40.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+            # Process L1
+            if l1:
+                if "min_pq" in l1:
+                    val = l1["min_pq"]
+                    if isinstance(val, (int, float)):
+                        stats["l1_min_nits"] = self._pq_to_nits(val)
+                if "max_pq" in l1:
+                    val = l1["max_pq"]
+                    if isinstance(val, (int, float)):
+                        stats["l1_max_nits"] = self._pq_to_nits(val)
+                if "avg_pq" in l1:
+                    val = l1["avg_pq"]
+                    if isinstance(val, (int, float)):
+                        stats["l1_avg_nits"] = self._pq_to_nits(val)
 
-            if not l1:
-                continue
+            # Process L2 (Target Display)
+            if l2:
+                if "target_max_pq" in l2:
+                    val = l2["target_max_pq"]
+                    if isinstance(val, (int, float)):
+                        stats["l2_target_nits"] = self._pq_to_nits(val)
 
-            if "min_pq" in l1:
-                val = l1["min_pq"]
-                if isinstance(val, (int, float)):
-                    stats["l1_min_nits"] = self._pq_to_nits(val)
-            if "max_pq" in l1:
-                val = l1["max_pq"]
-                if isinstance(val, (int, float)):
-                    stats["l1_max_nits"] = self._pq_to_nits(val)
-            if "avg_pq" in l1:
-                val = l1["avg_pq"]
-                if isinstance(val, (int, float)):
-                    stats["l1_avg_nits"] = self._pq_to_nits(val)
+            # Process L5 (Active Area)
+            if l5:
+                stats["l5_left"] = l5.get("active_area_left_offset")
+                stats["l5_right"] = l5.get("active_area_right_offset")
+                stats["l5_top"] = l5.get("active_area_top_offset")
+                stats["l5_bottom"] = l5.get("active_area_bottom_offset")
 
-            extracted.append(stats)
+            # Process L6 (MaxCLL/FALL)
+            if l6:
+                stats["l6_max_cll"] = l6.get("max_content_light_level")
+                stats["l6_max_fall"] = l6.get("max_frame_average_light_level")
+
+            if stats:
+                extracted.append(stats)
+            else:
+                # Even if no stats, append empty dict to keep frame sync?
+                # Or should we skip? The original code skipped if no L1.
+                # But now we might have other levels.
+                # Let's append if we found *any* relevant data, or maybe just empty dict is fine
+                # if we want to preserve index alignment (which we do).
+                extracted.append({})
 
         return extracted
 

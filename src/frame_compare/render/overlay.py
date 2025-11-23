@@ -150,6 +150,12 @@ def compose_overlay_text(
     dovi_l1_line = _diagnostics.format_dovi_l1_line(dovi_metadata)
     if dovi_l1_line:
         lines.append(dovi_l1_line)
+    dovi_l5_line = _diagnostics.format_dovi_l5_line(dovi_metadata)
+    if dovi_l5_line:
+        lines.append(dovi_l5_line)
+    dovi_l6_line = _diagnostics.format_dovi_l6_line(dovi_metadata)
+    if dovi_l6_line:
+        lines.append(dovi_l6_line)
     range_line = _diagnostics.format_dynamic_range_line(_diagnostics.classify_color_range(source_props))
     if range_line:
         lines.append(range_line)
