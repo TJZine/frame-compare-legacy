@@ -433,9 +433,6 @@ def _maybe_inject_dovi_metadata(clip: Any, core: Any, file_path: str, trim_start
             if 0 <= source_idx < len(metadata):
                 data = metadata[source_idx]
                 fout = f.copy()
-                
-                if n == 0:
-                    logger.warning("Injecting frame 0 (source %d) with data: %s", source_idx, data)
 
                 if "l1_avg_nits" in data:
                     fout.props["DolbyVision_L1_Average"] = float(data["l1_avg_nits"])

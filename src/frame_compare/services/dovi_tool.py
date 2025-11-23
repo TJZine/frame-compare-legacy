@@ -57,8 +57,8 @@ class DoviToolService:
             try:
                 with open(cache_path, "r", encoding="utf-8") as f:
                     cached_data = json.load(f)
-                    logger.warning("Found cached dovi info at %s with %d frames", cache_path, len(cached_data))
-                    # return cached_data # FORCE FRESH RUN
+                    logger.info("Found cached dovi info at %s with %d frames", cache_path, len(cached_data))
+                    return cached_data
             except Exception as e:
                 logger.warning("Failed to load cached dovi info: %s", e)
 
@@ -91,7 +91,7 @@ class DoviToolService:
             frames_metadata = self._parse_dovi_json(data)
 
             if frames_metadata:
-                logger.warning("Extracted metadata for %d frames. First frame: %s", len(frames_metadata), frames_metadata[0])
+                logger.info("Extracted metadata for %d frames.", len(frames_metadata))
             else:
                 logger.warning("Extracted metadata is empty!")
 
@@ -177,10 +177,8 @@ class DoviToolService:
             return []
 
         frame_list = cast(List[Any], frames)
-        if frame_list:
-             logger.warning("Parsing %d frames. First frame keys: %s", len(frame_list), frame_list[0].keys() if isinstance(frame_list[0], dict) else "Not a dict")
 
-        for i, frame in enumerate(frame_list):
+        for frame in frame_list:
             if not isinstance(frame, dict):
                 continue
             stats: Dict[str, Any] = {}
@@ -193,15 +191,24 @@ class DoviToolService:
                 rpu = cast(Dict[str, Any], frame.get("rpu", {})) # pyright: ignore[reportUnknownMemberType]
                 vdr_dm = cast(Dict[str, Any], rpu.get("vdr_dm_data", {})) # pyright: ignore[reportUnknownMemberType]
 
-            if i == 0:
-                 logger.warning("Frame 0 vdr_dm keys: %s", vdr_dm.keys() if isinstance(vdr_dm, dict) else "None")
+            # Try to find Level 1 in various locations
+            l1: Dict[str, Any] = {}
 
-            l1 = cast(Dict[str, Any], vdr_dm.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+            # 1. Direct 'level1' in vdr_dm_data (some versions)
+            if "level1" in vdr_dm:
+                l1 = cast(Dict[str, Any], vdr_dm.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
 
-            if i == 0:
-                 logger.warning("Frame 0 l1 keys: %s", l1.keys() if isinstance(l1, dict) else "None")
+            # 2. Inside cmv29_metadata (v2.9)
+            if not l1 and "cmv29_metadata" in vdr_dm:
+                cmv29 = cast(Dict[str, Any], vdr_dm.get("cmv29_metadata", {})) # pyright: ignore[reportUnknownMemberType]
+                l1 = cast(Dict[str, Any], cmv29.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
 
-            if not isinstance(l1, dict):
+            # 3. Inside cmv40_metadata (v4.0)
+            if not l1 and "cmv40_metadata" in vdr_dm:
+                cmv40 = cast(Dict[str, Any], vdr_dm.get("cmv40_metadata", {})) # pyright: ignore[reportUnknownMemberType]
+                l1 = cast(Dict[str, Any], cmv40.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+
+            if not l1:
                 continue
 
             if "min_pq" in l1:
