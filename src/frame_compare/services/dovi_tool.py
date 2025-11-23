@@ -206,14 +206,38 @@ class DoviToolService:
                 cmv29 = cast(Dict[str, Any], vdr_dm.get("cmv29_metadata", {})) # pyright: ignore[reportUnknownMemberType]
                 if i == 0:
                     logger.warning("Frame 0 cmv29 keys: %s", list(cmv29.keys()))
-                l1 = cast(Dict[str, Any], cmv29.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+                    if "ext_metadata_blocks" in cmv29:
+                        logger.warning("Frame 0 cmv29 ext_blocks: %s", cmv29["ext_metadata_blocks"])
+                
+                # Try to find Level1 in ext_metadata_blocks
+                if "ext_metadata_blocks" in cmv29:
+                    blocks = cast(List[Any], cmv29["ext_metadata_blocks"])
+                    for block in blocks:
+                        if isinstance(block, dict) and "Level1" in block:
+                            l1 = cast(Dict[str, Any], block["Level1"])
+                            break
+                
+                if not l1:
+                    l1 = cast(Dict[str, Any], cmv29.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
 
             # 3. Inside cmv40_metadata (v4.0)
             if not l1 and "cmv40_metadata" in vdr_dm:
                 cmv40 = cast(Dict[str, Any], vdr_dm.get("cmv40_metadata", {})) # pyright: ignore[reportUnknownMemberType]
                 if i == 0:
                     logger.warning("Frame 0 cmv40 keys: %s", list(cmv40.keys()))
-                l1 = cast(Dict[str, Any], cmv40.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+                    if "ext_metadata_blocks" in cmv40:
+                        logger.warning("Frame 0 cmv40 ext_blocks: %s", cmv40["ext_metadata_blocks"])
+
+                # Try to find Level1 in ext_metadata_blocks
+                if "ext_metadata_blocks" in cmv40:
+                    blocks = cast(List[Any], cmv40["ext_metadata_blocks"])
+                    for block in blocks:
+                        if isinstance(block, dict) and "Level1" in block:
+                            l1 = cast(Dict[str, Any], block["Level1"])
+                            break
+
+                if not l1:
+                    l1 = cast(Dict[str, Any], cmv40.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
 
             if i == 0:
                  logger.warning("Frame 0 l1 keys: %s", list(l1.keys()))
