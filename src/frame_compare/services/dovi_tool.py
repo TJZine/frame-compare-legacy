@@ -58,7 +58,7 @@ class DoviToolService:
                 with open(cache_path, "r", encoding="utf-8") as f:
                     cached_data = json.load(f)
                     logger.info("Found cached dovi info at %s with %d frames", cache_path, len(cached_data))
-                    return cached_data
+                    # return cached_data # FORCE FRESH RUN
             except Exception as e:
                 logger.warning("Failed to load cached dovi info: %s", e)
 
@@ -178,7 +178,7 @@ class DoviToolService:
 
         frame_list = cast(List[Any], frames)
 
-        for frame in frame_list:
+        for i, frame in enumerate(frame_list):
             if not isinstance(frame, dict):
                 continue
             stats: Dict[str, Any] = {}
@@ -191,6 +191,9 @@ class DoviToolService:
                 rpu = cast(Dict[str, Any], frame.get("rpu", {})) # pyright: ignore[reportUnknownMemberType]
                 vdr_dm = cast(Dict[str, Any], rpu.get("vdr_dm_data", {})) # pyright: ignore[reportUnknownMemberType]
 
+            if i == 0:
+                 logger.warning("Frame 0 vdr_dm keys: %s", list(vdr_dm.keys()))
+
             # Try to find Level 1 in various locations
             l1: Dict[str, Any] = {}
 
@@ -201,12 +204,19 @@ class DoviToolService:
             # 2. Inside cmv29_metadata (v2.9)
             if not l1 and "cmv29_metadata" in vdr_dm:
                 cmv29 = cast(Dict[str, Any], vdr_dm.get("cmv29_metadata", {})) # pyright: ignore[reportUnknownMemberType]
+                if i == 0:
+                    logger.warning("Frame 0 cmv29 keys: %s", list(cmv29.keys()))
                 l1 = cast(Dict[str, Any], cmv29.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
 
             # 3. Inside cmv40_metadata (v4.0)
             if not l1 and "cmv40_metadata" in vdr_dm:
                 cmv40 = cast(Dict[str, Any], vdr_dm.get("cmv40_metadata", {})) # pyright: ignore[reportUnknownMemberType]
+                if i == 0:
+                    logger.warning("Frame 0 cmv40 keys: %s", list(cmv40.keys()))
                 l1 = cast(Dict[str, Any], cmv40.get("level1", {})) # pyright: ignore[reportUnknownMemberType]
+
+            if i == 0:
+                 logger.warning("Frame 0 l1 keys: %s", list(l1.keys()))
 
             if not l1:
                 continue
