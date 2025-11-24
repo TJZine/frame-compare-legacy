@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
@@ -385,6 +386,8 @@ def init_clip(
         clip = _slice_clip(clip, end=int(trim_end))
     if fps_map is not None:
         clip = _apply_fps_map(clip, fps_map)
+
+    clip = _maybe_inject_dovi_metadata(clip, resolved_core, str(path_obj), trim_start)
     return clip
 
 
@@ -401,6 +404,71 @@ def _is_hdr_prop(key: str) -> bool:
     if normalized in _HDR_PROP_BASE_NAMES:
         return True
     return normalized.startswith("masteringdisplay") or normalized.startswith("contentlightlevel")
+
+
+def _maybe_inject_dovi_metadata(clip: Any, core: Any, file_path: str, trim_start: int) -> Any:
+    """
+    Attempt to inject Dolby Vision metadata using dovi_tool.
+    """
+    from src.frame_compare.services.dovi_tool import dovi_tool
+
+    if not dovi_tool.is_available():
+        return clip
+
+    try:
+        print("Extracting Dolby Vision metadata... this may take a minute", file=sys.stderr)
+        metadata = dovi_tool.extract_rpu_metadata(Path(file_path))
+        if not metadata:
+            return clip
+
+        logger.info("Injecting DoVi metadata from dovi_tool (%d frames)", len(metadata))
+
+        def _inject_props(n: int, f: Any) -> Any:
+            # Calculate original source frame index
+            if trim_start > 0:
+                source_idx = n + trim_start
+            elif trim_start < 0:
+                source_idx = n - abs(trim_start)
+            else:
+                source_idx = n
+
+            if 0 <= source_idx < len(metadata):
+                data = metadata[source_idx]
+                fout = f.copy()
+
+                if "l1_avg_nits" in data:
+                    fout.props["DolbyVision_L1_Average"] = float(data["l1_avg_nits"])
+                if "l1_max_nits" in data:
+                    fout.props["DolbyVision_L1_Maximum"] = float(data["l1_max_nits"])
+
+                if "l2_target_nits" in data:
+                    fout.props["DolbyVision_L2_TargetNits"] = float(data["l2_target_nits"])
+
+                if "l5_left" in data:
+                    fout.props["DolbyVision_L5_Left"] = int(data["l5_left"])
+                if "l5_right" in data:
+                    fout.props["DolbyVision_L5_Right"] = int(data["l5_right"])
+                if "l5_top" in data:
+                    fout.props["DolbyVision_L5_Top"] = int(data["l5_top"])
+                if "l5_bottom" in data:
+                    fout.props["DolbyVision_L5_Bottom"] = int(data["l5_bottom"])
+
+                if "l6_max_cll" in data:
+                    fout.props["DolbyVision_L6_MaxCLL"] = float(data["l6_max_cll"])
+                if "l6_max_fall" in data:
+                    fout.props["DolbyVision_L6_MaxFALL"] = float(data["l6_max_fall"])
+                # Also inject RPU present flag if not already there, to trigger overlay
+                if "DolbyVisionRPU" not in fout.props:
+                     fout.props["DolbyVisionRPU"] = b"1" # Dummy blob to signal presence
+                return fout
+            return f
+
+        return core.std.ModifyFrame(clip, clip, _inject_props)
+
+    except Exception as exc:
+        logger.warning("Failed to inject DoVi metadata: %s", exc)
+        return clip
+
 
 __all__ = [
     "VSPluginError",

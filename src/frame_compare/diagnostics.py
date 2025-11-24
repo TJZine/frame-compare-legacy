@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_key(key: object) -> str:
@@ -136,24 +139,51 @@ def format_mastering_display_line(props: Mapping[str, Any]) -> str:
 
 
 def _has_dovi_hint(normalized: str) -> bool:
-    return "dovi" in normalized or "dolbyvision" in normalized or "dolby" in normalized
+    return "dolby" in normalized or "dovi" in normalized or "rpu" in normalized or "l1" in normalized
 
 
 def _matches_all(text: str, needles: tuple[str, ...]) -> bool:
     return all(needle in text for needle in needles)
 
 
-def extract_dovi_metadata(props: Mapping[str, Any]) -> dict[str, float | int | None]:
-    """Return Dolby Vision metadata extracted from frame props when available."""
+def extract_dovi_metadata(props: Mapping[str, Any]) -> dict[str, float | int | bool | None]:
+    """
+    Extract Dolby Vision metadata from frame properties.
 
-    result: dict[str, float | int | None] = {
+    Returns a dict with keys:
+        - rpu_present (bool)
+        - l1_average (float | None)
+        - l1_maximum (float | None)
+        - ... other fields ...
+    """
+    result: dict[str, float | int | bool | None] = {
+        "rpu_present": None,
+        "l1_average": None,
+        "l1_maximum": None,
+        "l2_target_nits": None,
+        "l5_left": None,
+        "l5_right": None,
+        "l5_top": None,
+        "l5_bottom": None,
+        "l6_max_cll": None,
+        "l6_max_fall": None,
         "block_index": None,
         "block_total": None,
         "target_nits": None,
-        "l1_average": None,
-        "l1_maximum": None,
     }
+
+    # Debug: Log keys if RPU is present to help diagnose missing L1 stats
+    has_rpu_blob = any(k in ("DolbyVisionRPU", "_DolbyVisionRPU", "DolbyVisionRPU_b", "_DolbyVisionRPU_b") for k in props)
+    if has_rpu_blob:
+        dovi_keys = [k for k in props.keys() if "dolby" in k.lower() or "dovi" in k.lower() or "l1" in k.lower()]
+        logger.debug("DoVi props present; keys=%s", dovi_keys)
+
     for key, value in props.items():
+        # Check for raw RPU blob first (exact match or common variants)
+        if key in ("DolbyVisionRPU", "_DolbyVisionRPU", "DolbyVisionRPU_b", "_DolbyVisionRPU_b"):
+            result["rpu_present"] = True
+            continue
+
         normalized = _normalize_key(key)
         if not normalized or not _has_dovi_hint(normalized):
             continue
@@ -173,6 +203,31 @@ def extract_dovi_metadata(props: Mapping[str, Any]) -> dict[str, float | int | N
         elif "l1" in normalized and "max" in normalized:
             if result["l1_maximum"] is None:
                 result["l1_maximum"] = _coerce_float(value)
+        elif "l2" in normalized and "target" in normalized:
+            if result["l2_target_nits"] is None:
+                result["l2_target_nits"] = _coerce_float(value)
+        elif "l5" in normalized:
+            if "left" in normalized:
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_left"] = val
+            elif "right" in normalized:
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_right"] = val
+            elif "top" in normalized:
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_top"] = val
+            elif "bottom" in normalized:
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_bottom"] = val
+        elif "l6" in normalized:
+            if "cll" in normalized:
+                result["l6_max_cll"] = _coerce_float(value)
+            elif "fall" in normalized:
+                result["l6_max_fall"] = _coerce_float(value)
     return result
 
 
@@ -230,24 +285,38 @@ def format_dovi_line(label: str | None, metadata: Mapping[str, Any]) -> str | No
     """Return a DoVi summary line for diagnostic overlays."""
 
     parts: list[str] = []
-    metadata_present = any(value is not None for value in metadata.values())
+    # Check for L1 metadata presence (excluding the rpu_present flag itself)
+    l1_keys = {"block_index", "block_total", "target_nits", "l1_average", "l1_maximum"}
+    l1_present = any(value is not None for key, value in metadata.items() if key in l1_keys)
+    rpu_present = bool(metadata.get("rpu_present"))
+
     if label:
         parts.append(f"DoVi: {label}")
-    block_index = metadata.get("block_index")
-    block_total = metadata.get("block_total")
-    if isinstance(block_index, int) and block_index >= 0:
-        if isinstance(block_total, int) and block_total > 0:
-            parts.append(f"L2 {block_index}/{block_total}")
-        else:
-            parts.append(f"L2 block {block_index}")
-    elif isinstance(block_total, int) and block_total > 0:
-        parts.append(f"L2 blocks={block_total}")
-    target = metadata.get("target_nits")
-    target_label = _format_nits(target if isinstance(target, (int, float)) else None)
-    if target_label:
-        parts.append(f"target {target_label} nits")
-    if not metadata_present and label:
+
+    l2_target = metadata.get("l2_target_nits")
+    if l2_target:
+        l2_label = _format_nits(l2_target if isinstance(l2_target, (int, float)) else None)
+        if l2_label:
+            parts.append(f"(Target: {l2_label}nits)")
+
+    if l1_present:
+        block_index = metadata.get("block_index")
+        block_total = metadata.get("block_total")
+        if isinstance(block_index, int) and block_index >= 0:
+            if isinstance(block_total, int) and block_total > 0:
+                parts.append(f"L2 {block_index}/{block_total}")
+            else:
+                parts.append(f"L2 block {block_index}")
+        elif isinstance(block_total, int) and block_total > 0:
+            parts.append(f"L2 blocks={block_total}")
+        target = metadata.get("target_nits")
+        target_label = _format_nits(target if isinstance(target, (int, float)) else None)
+        if target_label:
+            parts.append(f"target {target_label} nits")
+
+    if not l1_present and label and not rpu_present:
         parts.append("(no DV metadata)")
+
     if not parts:
         return None
     return " ".join(parts)
@@ -269,6 +338,51 @@ def format_dovi_l1_line(metadata: Mapping[str, Any]) -> str | None:
         parts.append(f"{avg_label}nits")
     descriptor = "MAX/AVG" if max_label and avg_label else "MAX" if max_label else "AVG"
     return f"DV RPU Level 1 {descriptor}: {' / '.join(parts)}"
+
+
+def format_dovi_l5_line(metadata: Mapping[str, Any]) -> str | None:
+    """Render DV L5 active area offsets if present."""
+    left = metadata.get("l5_left")
+    right = metadata.get("l5_right")
+    top = metadata.get("l5_top")
+    bottom = metadata.get("l5_bottom")
+
+    # Only show if any value is present and non-zero
+    if all(v == 0 for v in (left, right, top, bottom) if isinstance(v, int)):
+        return None
+
+    parts: list[str] = []
+    if left is not None:
+        parts.append(f"L:{left}")
+    if right is not None:
+        parts.append(f"R:{right}")
+    if top is not None:
+        parts.append(f"T:{top}")
+    if bottom is not None:
+        parts.append(f"B:{bottom}")
+
+    if not parts:
+        return None
+    return f"DV L5 Active Area: {' '.join(parts)}"
+
+
+def format_dovi_l6_line(metadata: Mapping[str, Any]) -> str | None:
+    """Render DV L6 MaxCLL/MaxFALL if present."""
+    cll = metadata.get("l6_max_cll")
+    fall = metadata.get("l6_max_fall")
+
+    cll_label = _format_nits(cll if isinstance(cll, (int, float)) else None)
+    fall_label = _format_nits(fall if isinstance(fall, (int, float)) else None)
+
+    parts: list[str] = []
+    if cll_label:
+        parts.append(f"MaxCLL {cll_label}")
+    if fall_label:
+        parts.append(f"MaxFALL {fall_label}")
+
+    if not parts:
+        return None
+    return f"DV L6 Metadata: {' / '.join(parts)}"
 
 
 def format_hdr_line(metadata: Mapping[str, Any]) -> str | None:

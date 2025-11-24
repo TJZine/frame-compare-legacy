@@ -606,17 +606,20 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
 
     assert init_calls, "Clips should be initialised with trims applied"
     trims_by_path = {Path(path).name: trim for path, trim in init_calls}
-    assert trims_by_path[target_path.name] == 8
-    assert trims_by_path[reference_path.name] == -3
+    # Normalized trims: min is -3, so shift is +3.
+    # Target: 8 + 3 = 11
+    # Reference: -3 + 3 = 0
+    assert trims_by_path[target_path.name] == 11
+    assert trims_by_path[reference_path.name] == 0
     assert cache_probes and cache_probes[0].path == cache_file.resolve()
     assert result.json_tail is not None
     audio_json = _expect_mapping(result.json_tail["audio_alignment"])
     manual_map = cast(dict[str, int], audio_json.get("manual_trim_starts", {}))
-    assert manual_map[target_path.name] == 8
-    assert manual_map[reference_path.name] == -3
+    assert manual_map[target_path.name] == 11
+    assert manual_map[reference_path.name] == 0
     offsets_frames = _expect_mapping(audio_json.get("offsets_frames", {}))
-    assert offsets_frames.get("Target") == 8
-    assert offsets_frames.get("Reference") == -3
+    assert offsets_frames.get("Target") == 11
+    assert offsets_frames.get("Reference") == 0
     cache_json = _expect_mapping(result.json_tail["cache"])
     assert cache_json["status"] == "reused"
     analysis_json = _expect_mapping(result.json_tail["analysis"])
@@ -1552,18 +1555,18 @@ def test_vspreview_manual_offsets_negative(tmp_path: Path, monkeypatch: pytest.M
         display,
     )
 
-    assert target_plan.trim_start == -4
-    assert reference_plan.trim_start == 0
-    assert summary.manual_trim_starts[target_path.name] == -4
-    assert summary.vspreview_manual_offsets[reference_path.name] == 0
-    assert summary.vspreview_manual_deltas[target_path.name] == -7
-    assert summary.vspreview_manual_deltas[reference_path.name] == 0
+    assert target_plan.trim_start == 0
+    assert reference_plan.trim_start == 4
+    assert summary.manual_trim_starts[target_path.name] == 0
+    assert summary.vspreview_manual_offsets[reference_path.name] == 4
+    assert summary.vspreview_manual_deltas[target_path.name] == -3
+    assert summary.vspreview_manual_deltas[reference_path.name] == 4
     audio_block = json_tail["audio_alignment"]
     manual_map = cast(dict[str, int], audio_block.get("manual_trim_starts", {}))
-    assert manual_map[target_path.name] == -4
-    assert audio_block.get("vspreview_reference_trim") == 0
-    assert not any("reference adjustment" in line for line in reporter.lines)
-    assert any("Target" in line and "-4f" in line for line in display.manual_trim_lines)
+    assert manual_map[target_path.name] == 0
+    assert audio_block.get("vspreview_reference_trim") == 4
+    assert any("VSPreview manual offset applied" in line and reference_path.name in line for line in reporter.lines)
+    assert any("Target" in line and "0f" in line for line in display.manual_trim_lines)
 
 def test_vspreview_manual_offsets_multiple_negative(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1629,28 +1632,28 @@ def test_vspreview_manual_offsets_multiple_negative(
         display,
     )
 
-    assert target_a_plan.trim_start == 2
-    assert target_b_plan.trim_start == -2
-    assert reference_plan.trim_start == 0
+    assert target_a_plan.trim_start == 4
+    assert target_b_plan.trim_start == 0
+    assert reference_plan.trim_start == 2
     assert summary.suggestion_mode is False
-    assert summary.manual_trim_starts[target_a_path.name] == 2
-    assert summary.manual_trim_starts[target_b_path.name] == -2
-    assert summary.vspreview_manual_offsets[target_a_path.name] == 2
-    assert summary.vspreview_manual_offsets[target_b_path.name] == -2
-    assert summary.vspreview_manual_offsets[reference_path.name] == 0
-    assert summary.vspreview_manual_deltas[target_a_path.name] == -3
-    assert summary.vspreview_manual_deltas[target_b_path.name] == -7
-    assert summary.vspreview_manual_deltas[reference_path.name] == 0
+    assert summary.manual_trim_starts[target_a_path.name] == 4
+    assert summary.manual_trim_starts[target_b_path.name] == 0
+    assert summary.vspreview_manual_offsets[target_a_path.name] == 4
+    assert summary.vspreview_manual_offsets[target_b_path.name] == 0
+    assert summary.vspreview_manual_offsets[reference_path.name] == 2
+    assert summary.vspreview_manual_deltas[target_a_path.name] == -1
+    assert summary.vspreview_manual_deltas[target_b_path.name] == -5
+    assert summary.vspreview_manual_deltas[reference_path.name] == 2
 
     audio_block = json_tail["audio_alignment"]
     offsets_map = cast(dict[str, int], audio_block.get("vspreview_manual_offsets", {}))
     deltas_map = cast(dict[str, int], audio_block.get("vspreview_manual_deltas", {}))
-    assert offsets_map[target_a_path.name] == 2
-    assert offsets_map[target_b_path.name] == -2
-    assert offsets_map[reference_path.name] == 0
-    assert deltas_map[target_a_path.name] == -3
-    assert deltas_map[target_b_path.name] == -7
-    assert deltas_map[reference_path.name] == 0
+    assert offsets_map[target_a_path.name] == 4
+    assert offsets_map[target_b_path.name] == 0
+    assert offsets_map[reference_path.name] == 2
+    assert deltas_map[target_a_path.name] == -1
+    assert deltas_map[target_b_path.name] == -5
+    assert deltas_map[reference_path.name] == 2
 
     measurements = cast(list[AlignmentMeasurement], captured["measurements"])
     assert {m.file.name for m in measurements} == {

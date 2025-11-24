@@ -503,7 +503,7 @@ _METADATA_NAME_TO_CODE = {
 }
 
 
-def _resolve_tonemap_settings(cfg: Any) -> TonemapSettings:
+def _resolve_tonemap_settings(cfg: Any, props: Mapping[str, Any] | None = None) -> TonemapSettings:
     preset = str(getattr(cfg, "preset", "") or "").strip().lower()
     tone_curve = str(getattr(cfg, "tone_curve", "bt.2390") or "bt.2390")
     provided_raw = getattr(cfg, "_provided_keys", None)
@@ -579,6 +579,13 @@ def _resolve_tonemap_settings(cfg: Any) -> TonemapSettings:
     elif use_dovi_value is not None:
         use_dovi_value = bool(use_dovi_value)
 
+    # Auto-enable DoVi if RPU blob is present in props and setting is auto (None)
+    if use_dovi_value is None and props:
+        for key in props:
+            if key in ("DolbyVisionRPU", "_DolbyVisionRPU", "DolbyVisionRPU_b", "_DolbyVisionRPU_b"):
+                use_dovi_value = True
+                break
+
     return TonemapSettings(
         preset=preset or "custom",
         tone_curve=tone_curve,
@@ -600,10 +607,15 @@ def _resolve_tonemap_settings(cfg: Any) -> TonemapSettings:
     )
 
 
-def resolve_effective_tonemap(cfg: Any) -> Dict[str, Any]:
+
+
+
+
+
+def resolve_effective_tonemap(cfg: Any, props: Mapping[str, Any] | None = None) -> Dict[str, Any]:
     """Resolve the effective tonemap preset, curve, and luminance for ``cfg``."""
 
-    settings = _resolve_tonemap_settings(cfg)
+    settings = _resolve_tonemap_settings(cfg, props=props)
     resolved = {
         "preset": settings.preset,
         "tone_curve": settings.tone_curve,
@@ -934,7 +946,7 @@ def process_clip_for_screenshot(
     if core is None:
         raise ClipProcessError("Clip has no associated VapourSynth core")
 
-    tonemap_settings = _resolve_tonemap_settings(cfg)
+    tonemap_settings = _resolve_tonemap_settings(cfg, props=source_props)
     preset = tonemap_settings.preset
     tone_curve = tonemap_settings.tone_curve
     target_nits = tonemap_settings.target_nits

@@ -1387,7 +1387,7 @@ def test_run_cli_coalesces_duplicate_pivot_logs(
         )
 
     _patch_vs_core(monkeypatch, "init_clip", fake_init_clip)
-    _patch_vs_core(monkeypatch, "resolve_effective_tonemap", lambda _cfg: {})
+    _patch_vs_core(monkeypatch, "resolve_effective_tonemap", lambda _cfg, **_kwargs: {})
 
     def fake_select(
         clip: types.SimpleNamespace,

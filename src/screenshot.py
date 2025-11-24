@@ -2452,8 +2452,8 @@ def generate_screenshots(
 
     geometry = _plan_geometry([result.clip for result in processed_results], cfg)
 
-    for clip_index, (result, file_path, meta, plan, trim_start) in enumerate(
-        zip(processed_results, files, metadata, geometry, trim_offsets, strict=True)
+    for clip_index, (result, file_path, meta, plan, trim_start, source_clip) in enumerate(
+        zip(processed_results, files, metadata, geometry, trim_offsets, clips, strict=True)
     ):
         mapper = None
         if alignment_maps is not None and clip_index < len(alignment_maps):
@@ -2583,6 +2583,24 @@ def generate_screenshots(
                     debug_state.normalized_clip,
                     debug_state.normalized_props,
                 )
+
+            # Fetch dynamic props from the source clip for this frame
+            current_props = dict(source_props)
+            try:
+                # Use source_clip to ensure we get original metadata (e.g. DoVi RPU stats)
+                # that might be lost or static in the processed clip.
+                # We use actual_idx which is clamped and mapped.
+                source_frame_idx = _resolve_source_frame_index(actual_idx, trim_start)
+
+                if source_frame_idx is not None:
+                    frame_ref = source_clip.get_frame(source_frame_idx)
+                    dynamic_props = dict(frame_ref.props)
+                    current_props.update(dynamic_props)
+                else:
+                    logger.debug("Frame %s falls within padding; skipping dynamic props", actual_idx)
+            except Exception as exc:
+                logger.debug("Failed to fetch dynamic props for frame %s: %s", actual_idx, exc)
+
             if debug_enabled:
                 overlay_text = None
             else:
@@ -2591,7 +2609,7 @@ def generate_screenshots(
                     color_cfg,
                     plan,
                     selection_label,
-                    source_props,
+                    current_props,
                     tonemap_info=result.tonemap,
                     selection_detail=detail_info,
                 )

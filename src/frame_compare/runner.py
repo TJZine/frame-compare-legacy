@@ -1574,7 +1574,8 @@ def run(request: RunRequest, *, dependencies: RunDependencies | None = None) -> 
             "use_dovi_cfg": getattr(cfg.color, "use_dovi", None),
         }
     )
-    effective_tonemap = vs_core.resolve_effective_tonemap(cfg.color)
+    effective_tonemap_props = plans[0].source_frame_props if plans else None
+    effective_tonemap = vs_core.resolve_effective_tonemap(cfg.color, props=effective_tonemap_props)
     json_tail["tonemap"] = {
         "preset": effective_tonemap.get("preset", cfg.color.preset),
         "tone_curve": effective_tonemap.get("tone_curve", cfg.color.tone_curve),

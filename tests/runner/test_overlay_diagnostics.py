@@ -215,12 +215,18 @@ def _install_render_stubs(monkeypatch: pytest.MonkeyPatch, out_dir: Path) -> Non
     monkeypatch.setattr(
         runner_module.vs_core,
         "resolve_effective_tonemap",
-        lambda color_cfg: {
+        lambda color_cfg, props=None: {
             "preset": getattr(color_cfg, "preset", "reference"),
             "tone_curve": getattr(color_cfg, "tone_curve", "bt.2390"),
             "target_nits": getattr(color_cfg, "target_nits", 100.0),
             "metadata": getattr(color_cfg, "metadata", "auto"),
-            "use_dovi": getattr(color_cfg, "use_dovi", None),
+            "use_dovi": (
+                True
+                if getattr(color_cfg, "use_dovi", None) is None
+                and props
+                and any(k in props for k in ("DolbyVisionRPU", "_DolbyVisionRPU"))
+                else getattr(color_cfg, "use_dovi", None)
+            ),
         },
     )
 
