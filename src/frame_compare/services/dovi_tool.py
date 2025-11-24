@@ -35,8 +35,6 @@ class DoviToolService:
         if binary.exists():
             return binary
 
-        # Fallback: check if both exist and pick the one that matches (user might have dumped both)
-        # This is redundant if the above check works, but good for safety if logic changes
         return None
 
     def is_available(self) -> bool:
@@ -58,7 +56,7 @@ class DoviToolService:
                 with open(cache_path, "r", encoding="utf-8") as f:
                     cached_data = json.load(f)
                     logger.info("Found cached dovi info at %s with %d frames", cache_path, len(cached_data))
-                    return cached_data # FORCE FRESH RUN
+                    return cached_data
             except Exception as e:
                 logger.warning("Failed to load cached dovi info: %s", e)
 

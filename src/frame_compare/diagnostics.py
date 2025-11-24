@@ -138,8 +138,8 @@ def format_mastering_display_line(props: Mapping[str, Any]) -> str:
     )
 
 
-def _has_dovi_hint(key: str) -> bool:
-    return "dolby" in key or "dovi" in key or "rpu" in key or "l1" in key
+def _has_dovi_hint(normalized: str) -> bool:
+    return "dolby" in normalized or "dovi" in normalized or "rpu" in normalized or "l1" in normalized
 
 
 def _matches_all(text: str, needles: tuple[str, ...]) -> bool:
@@ -208,13 +208,21 @@ def extract_dovi_metadata(props: Mapping[str, Any]) -> dict[str, float | int | b
                 result["l2_target_nits"] = _coerce_float(value)
         elif "l5" in normalized:
             if "left" in normalized:
-                result["l5_left"] = _coerce_int(value)
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_left"] = val
             elif "right" in normalized:
-                result["l5_right"] = _coerce_int(value)
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_right"] = val
             elif "top" in normalized:
-                result["l5_top"] = _coerce_int(value)
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_top"] = val
             elif "bottom" in normalized:
-                result["l5_bottom"] = _coerce_int(value)
+                val = _coerce_int(value)
+                if val is not None and val >= 0:
+                    result["l5_bottom"] = val
         elif "l6" in normalized:
             if "cll" in normalized:
                 result["l6_max_cll"] = _coerce_float(value)
@@ -339,7 +347,7 @@ def format_dovi_l5_line(metadata: Mapping[str, Any]) -> str | None:
     top = metadata.get("l5_top")
     bottom = metadata.get("l5_bottom")
 
-    # Only show if any value is non-zero (or at least present)
+    # Only show if any value is present and non-zero
     if all(v == 0 for v in (left, right, top, bottom) if isinstance(v, int)):
         return None
 

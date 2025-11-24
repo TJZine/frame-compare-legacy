@@ -358,9 +358,8 @@ def apply_audio_alignment(
         if not vspreview_reuse:
             return None
 
-        # Logic extracted to _apply_manual_offsets_logic for testability
-        # Logic extracted to _apply_manual_offsets_logic for testability
-        delta_map, manual_trim_starts = _apply_manual_offsets_logic(
+        # Logic extracted to apply_manual_offsets_logic for testability
+        delta_map, manual_trim_starts = apply_manual_offsets_logic(
             plans=plans,
             vspreview_reuse=vspreview_reuse,
             display_data=display_data,
@@ -1571,28 +1570,28 @@ def format_alignment_output(
         )
 
 
-def _apply_manual_offsets_logic(
+def apply_manual_offsets_logic(
     plans: Sequence[ClipPlan],
-    vspreview_reuse: Dict[str, int],
+    vspreview_reuse: dict[str, int],
     display_data: _AudioAlignmentDisplayData,
-    plan_labels: Dict[Path, str],
-) -> tuple[Dict[str, int], Dict[str, int]]:
+    plan_labels: dict[Path, str],
+) -> tuple[dict[str, int], dict[str, int]]:
     """
     Apply manual offsets from VSPreview history, normalizing to avoid negative trims (padding).
     Extracted for testability.
 
     Returns:
-        tuple[Dict[str, int], Dict[str, int]]: (delta_map, manual_trim_starts)
+        tuple[dict[str, int], dict[str, int]]: (delta_map, manual_trim_starts)
     """
     if display_data.manual_trim_lines:
         display_data.manual_trim_lines.clear()
 
     baseline_map = {plan.path.name: int(plan.trim_start) for plan in plans}
-    delta_map: Dict[str, int] = {}
-    manual_trim_starts: Dict[str, int] = {}
+    delta_map: dict[str, int] = {}
+    manual_trim_starts: dict[str, int] = {}
 
     # 1. Calculate proposed trims for all plans
-    proposed_trims: Dict[str, int] = {}
+    proposed_trims: dict[str, int] = {}
     for plan in plans:
         key = plan.path.name
         baseline = baseline_map.get(key, int(plan.trim_start))
@@ -1606,19 +1605,8 @@ def _apply_manual_offsets_logic(
     logger.info(f"[ALIGN DEBUG] Proposed trims before normalization: {proposed_trims}")
 
     # 2. Normalize to ensure no negative trims (avoid padding)
-    # We want to convert offsets (delays) into trims (cuts).
-    # If offset is negative (e.g. -361), it means the clip starts 361 frames EARLY (relative to baseline).
-    # To align, we want to shift everything so the earliest start becomes 0.
-    # min_offset = -361. shift = +361.
-    # Kira (-361): -361 + 361 = 0.
-    # CtrlHD (0): 0 + 361 = 361.
-    # Result: Kira trim 0, CtrlHD trim 361.
-    # This trims CtrlHD (the one that started later/had extra content? No, wait).
-    # If Kira is -361, it means Kira is "left" of zero.
-    # If we shift everything right by 361...
-    # Kira becomes 0. CtrlHD becomes 361.
-    # So we trim CtrlHD by 361 frames.
-    # This matches the user's request: "the -361 should trim the CTRLHD video".
+    # Normalize by shifting all clips up so the minimum trim becomes 0
+    # Example: offsets [-361, 0] → shift +361 → trims [0, 361]
     min_offset = min(proposed_trims.values()) if proposed_trims else 0
     shift = -min_offset if min_offset < 0 else 0
 
@@ -1649,18 +1637,20 @@ def _apply_manual_offsets_logic(
 
 
             baseline = baseline_map.get(key, 0)
-            delta = delta_map.get(key, 0)
+            effective_delta = normalized_trim - baseline
+            delta_map[key] = effective_delta
 
-            parts: List[str] = []
-            parts.append(f"baseline {baseline}f")
-            if delta != 0:
-                parts.append(f"{delta:+d}f offset")
-            if shift > 0:
-                parts.append(f"+{shift}f shift")
-            parts.append(f"→ {int(plan.trim_start)}f")
+            label = plan_labels.get(plan.path, key)
+            input_delta = proposed_trims[key] - baseline
+            
+            line = (
+                f"VSPreview manual offset applied: {label} baseline {baseline}f "
+                f"{input_delta:+d}f (shift {shift:+d}f) → {normalized_trim}f"
+            )
+            display_data.manual_trim_lines.append(line)
 
             logger.info(f"[ALIGN DEBUG] Applied trim to {key}: raw={raw_offset} + shift={shift} -> {normalized_trim}. Final trim_start={plan.trim_start}")
 
-            display_data.manual_trim_lines.append(" ".join(parts))
+
 
     return delta_map, manual_trim_starts

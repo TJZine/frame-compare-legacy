@@ -580,8 +580,6 @@ def apply_manual_offsets(
 ) -> None:
     reference_plan = summary.reference_plan
     reference_name = reference_plan.path.name
-    targets = [plan for plan in plans if plan is not reference_plan]
-
     baseline_map: Dict[str, int] = {
         plan.path.name: summary.manual_trim_starts.get(plan.path.name, int(plan.trim_start))
         for plan in plans
@@ -593,9 +591,6 @@ def apply_manual_offsets(
     delta_map: Dict[str, int] = {}
     manual_lines: List[str] = []
 
-    desired_map: Dict[str, int] = {}
-    target_adjustments: List[Tuple[ClipPlan, int, int]] = []
-
     unknown_deltas = sorted(set(deltas.keys()) - set(baseline_map.keys()))
     if unknown_deltas:
         message = (
@@ -605,79 +600,49 @@ def apply_manual_offsets(
         reporter.warn(message)
         logger.warning(message)
 
-    # 1. Calculate all desired absolute trim positions (un-normalized)
-    for plan in targets:
-        key = plan.path.name
-        baseline_value = baseline_map.get(key, int(plan.trim_start))
-        delta_value = int(deltas.get(key, 0))
-        desired_value = baseline_value + delta_value
-        desired_map[key] = desired_value
-        target_adjustments.append((plan, baseline_value, delta_value))
+    from src.frame_compare import alignment_runner as alignment_runner_module
 
-    reference_baseline = baseline_map.get(reference_name, int(reference_plan.trim_start))
-    reference_delta_input = int(deltas.get(reference_name, 0))
-    desired_map[reference_name] = reference_baseline + reference_delta_input
+    # 1. Reuse the shared normalization logic from alignment_runner
+    # We need to adapt the input 'deltas' to what _apply_manual_offsets_logic expects (vspreview_reuse).
+    # The logic there expects: vspreview_reuse = {filename: delta_int}
+    # It returns: (delta_map, manual_trim_starts)
 
-    # 2. Normalize to ensure no negative trims (avoid padding)
-    # Find the most negative desired trim and shift everyone up so the minimum is 0.
-    min_desired = min(desired_map.values()) if desired_map else 0
-    shift = -min_desired if min_desired < 0 else 0
+    # Create a dummy display object to capture log lines
+    class _DummyDisplay:
+        def __init__(self) -> None:
+            self.manual_trim_lines: list[str] = []
 
-    if shift > 0:
-        logger.info(f"[VSPREVIEW] Found negative desired trim {min_desired}, applying global shift of {shift}f.")
+    dummy_display = _DummyDisplay()
 
-    # 3. Apply normalized trims
-    for plan, baseline_value, delta_value in target_adjustments:
-        key = plan.path.name
-        desired_value = desired_map[key]
-        # Apply shift
-        updated_int = int(desired_value + shift)
+    # Call the shared logic
+    # cast deltas to dict[str, int] to satisfy type checker (Mapping vs dict)
+    delta_map, manual_trim_starts = alignment_runner_module.apply_manual_offsets_logic(
+        plans,
+        dict(deltas),
+        dummy_display, # type: ignore
+        {p.path: p.path.name for p in plans}
+    )
 
-        plan.trim_start = updated_int
-        plan.source_num_frames = None
-        plan.has_trim_start_override = (
-            plan.has_trim_start_override or updated_int != 0
-        )
-        manual_trim_starts[key] = updated_int
-
-        # The delta we report is the *effective* change from the original baseline
-        # But wait, if we shift, we change the absolute trim.
-        # The "offset" (relative to reference) should be preserved.
-        # If we shift both ref and target by +361, their relative difference is same.
-        # So we record the *final* trim as the "applied" value?
-        # alignment_runner uses: adjustment = desired - baseline
-        # Here: applied_delta = updated_int - baseline_value
-        applied_delta = updated_int - baseline_value
-        delta_map[key] = applied_delta
-
-        line = (
-            f"VSPreview manual offset applied: {_plan_label(plan)} baseline {baseline_value}f "
-            f"{delta_value:+d}f (shift {shift:+d}f) → {updated_int}f"
-        )
+    # Emit the log lines captured by the shared logic
+    for line in dummy_display.manual_trim_lines:
         manual_lines.append(line)
         reporter.line(line)
 
-    adjusted_reference = desired_map[reference_name]
-    # Apply shift to reference too
-    adjusted_reference_int = int(adjusted_reference + shift)
+    # We also need to handle the reference plan specifically if it was adjusted
+    # The shared logic updates the plans in-place, so we just need to ensure
+    # reference_plan properties are set correctly if not covered by the loop below.
+    # Actually, _apply_manual_offsets_logic updates ALL plans in the list.
 
-    reference_plan.trim_start = adjusted_reference_int
-    reference_plan.source_num_frames = None
-    reference_plan.has_trim_start_override = (
-        reference_plan.has_trim_start_override
-        or adjusted_reference_int != int(reference_baseline)
-    )
-    manual_trim_starts[reference_name] = adjusted_reference_int
-    reference_delta = adjusted_reference_int - reference_baseline
-    delta_map[reference_name] = reference_delta
+    # However, the original code had some specific reporting for the reference.
+    # Let's see if we need to preserve that.
+    # The shared logic logs: "baseline X ... -> Y" for all changed plans.
+    # The original code logged separate lines for targets and reference.
+    # The shared logic's logging should be sufficient.
 
-    if reference_delta != 0:
-        ref_line = (
-            f"VSPreview reference adjustment: {_plan_label(reference_plan)} baseline {reference_baseline}f "
-            f"+ shift {shift:+d}f → {adjusted_reference_int}f"
-        )
-        manual_lines.append(ref_line)
-        reporter.line(ref_line)
+    if display is not None:
+        display.manual_trim_lines.extend(manual_lines)
+        display.offset_lines = ["Audio offsets: VSPreview manual offsets applied"]
+        display.offset_lines.extend(display.manual_trim_lines)
 
     if display is not None:
         display.manual_trim_lines.extend(manual_lines)

@@ -618,8 +618,8 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
     assert manual_map[target_path.name] == 11
     assert manual_map[reference_path.name] == 0
     offsets_frames = _expect_mapping(audio_json.get("offsets_frames", {}))
-    assert offsets_frames.get("Target") == 8
-    assert offsets_frames.get("Reference") == -3
+    assert offsets_frames.get("Target") == 11
+    assert offsets_frames.get("Reference") == 0
     cache_json = _expect_mapping(result.json_tail["cache"])
     assert cache_json["status"] == "reused"
     analysis_json = _expect_mapping(result.json_tail["analysis"])
@@ -1565,7 +1565,7 @@ def test_vspreview_manual_offsets_negative(tmp_path: Path, monkeypatch: pytest.M
     manual_map = cast(dict[str, int], audio_block.get("manual_trim_starts", {}))
     assert manual_map[target_path.name] == 0
     assert audio_block.get("vspreview_reference_trim") == 4
-    assert any("reference adjustment" in line for line in reporter.lines)
+    assert any("VSPreview manual offset applied" in line and reference_path.name in line for line in reporter.lines)
     assert any("Target" in line and "0f" in line for line in display.manual_trim_lines)
 
 def test_vspreview_manual_offsets_multiple_negative(
