@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.0.14](https://github.com/TJZine/frame-compare/compare/frame-compare-v0.0.13...frame-compare-v0.0.14) (2025-11-24)
+
+
+### Features
+
+* add alignment calculation logging and a reproduction script ([ac29cc9](https://github.com/TJZine/frame-compare/commit/ac29cc9c7ff00879c950034df59664c1049090f8))
+* add parsing and display for Dolby Vision L2, L5, and L6 metadata ([6f16424](https://github.com/TJZine/frame-compare/commit/6f1642434a73d483f38c533bd7cba06e39707808))
+* adjust dovi_tool output structure with fallback ([6d4b9ff](https://github.com/TJZine/frame-compare/commit/6d4b9ff4a240512aeef64040b8cbfee118da723b))
+* auto-enable Dolby Vision from RPU and add stats to diagnostic overlay ([#177](https://github.com/TJZine/frame-compare/issues/177)) ([6a781e1](https://github.com/TJZine/frame-compare/commit/6a781e10e902efbd5db852215e3518f70f8282d0))
+* auto-enable Dolby Vision from RPU and add tonemapping retries ([2c5b46b](https://github.com/TJZine/frame-compare/commit/2c5b46ba451e3462a5f8b5a405f9d6ac1fc551ea))
+* enhance Dolby Vision Level 1 metadata parsing ([a10bf76](https://github.com/TJZine/frame-compare/commit/a10bf76bb85708b8c5be82b732706c6642fc2be9))
+* extract Dolby Vision metadata using temporary RPU and JSON files ([2c2c072](https://github.com/TJZine/frame-compare/commit/2c2c07235f0ce5564a2c93b5f888ebb85345a40e))
+* inject Dolby Vision L1 metadata using external dovi_tool ([a66bc0e](https://github.com/TJZine/frame-compare/commit/a66bc0e4e8abf61fafcb870ffbce652fa6f4c1fb))
+* inject Dolby Vision metadata to diagnostic overlay ([d467da0](https://github.com/TJZine/frame-compare/commit/d467da049280b533bef4dc77e0f28aa85f6574b6))
+
+
+### Bug Fixes
+
+* code review suggestions ([48e887a](https://github.com/TJZine/frame-compare/commit/48e887a86a46af6665c3a6b3c9acf599c2b76a08))
+* ensure negative offsets are normalized after first application ([6c16f49](https://github.com/TJZine/frame-compare/commit/6c16f4983457e8fd79385d2ee0ce1852daf5a978))
+* improve trim normalization in alignment runner ([e1e07a0](https://github.com/TJZine/frame-compare/commit/e1e07a00be603da5cf01eacce04a848437517348))
+* ruff whitespace error ([d2b1956](https://github.com/TJZine/frame-compare/commit/d2b19569a5a00abf78ad26891d311ff049f25bcc))
+
+
+### Refactors
+
+* extract VSPreview manual trim offset application logic ([6d0e1fb](https://github.com/TJZine/frame-compare/commit/6d0e1fb6bd620041ce5d4a6e1f49e5f07e5565a9))
+
 ## [0.0.13](https://github.com/TJZine/frame-compare/compare/frame-compare-v0.0.12...frame-compare-v0.0.13) (2025-11-22)
 
 
