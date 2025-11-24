@@ -151,6 +151,7 @@ class DoviToolService:
             num = max(pow_val - c1, 0.0)
             den = c2 - c3 * pow_val
             if den == 0:
+                logger.warning("PQ conversion: denominator zero for pq_val=%s, returning max", pq_val)
                 return 10000.0 # Avoid div by zero, theoretically max brightness
 
             linear_val = (num / den) ** (1.0 / m1)
