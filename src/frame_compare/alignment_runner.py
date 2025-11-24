@@ -1642,7 +1642,7 @@ def apply_manual_offsets_logic(
 
             label = plan_labels.get(plan.path, key)
             input_delta = proposed_trims[key] - baseline
-            
+
             line = (
                 f"VSPreview manual offset applied: {label} baseline {baseline}f "
                 f"{input_delta:+d}f (shift {shift:+d}f) → {normalized_trim}f"
