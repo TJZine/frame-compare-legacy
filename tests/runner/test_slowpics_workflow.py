@@ -49,6 +49,7 @@ from src.frame_compare.services.publishers import (
     SlowpicsPublisherRequest,
     UploadProgressTracker,
 )
+from src.frame_compare.services.setup import DefaultSetupService
 from src.tmdb import TMDBAmbiguityError, TMDBCandidate, TMDBResolution, TMDBResolutionError
 from tests.helpers.runner_env import (
     _CliRunnerEnv,
@@ -176,6 +177,7 @@ def _install_publisher_stubs(
         alignment_workflow=base_deps.alignment_workflow,
         report_publisher=report_publisher,
         slowpics_publisher=slowpics_publisher,
+        setup_service=DefaultSetupService(),
     )
     monkeypatch.setattr(runner_module, "default_run_dependencies", lambda **kwargs: dependencies)
     monkeypatch.setattr(coordinator_module, "default_run_dependencies", lambda **kwargs: dependencies)

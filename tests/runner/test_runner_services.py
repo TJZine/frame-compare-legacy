@@ -23,6 +23,7 @@ from src.frame_compare.services.publishers import (
     SlowpicsPublisher,
     SlowpicsPublisherRequest,
 )
+from src.frame_compare.services.setup import DefaultSetupService
 from tests.services.conftest import StubReporter, build_base_json_tail, build_service_config
 
 pytestmark = pytest.mark.usefixtures("runner_vs_core_stub", "dummy_progress")  # type: ignore[attr-defined]
@@ -147,6 +148,7 @@ def _build_dependencies(
         alignment_workflow=cast(AlignmentWorkflow, alignment_workflow),
         report_publisher=cast(ReportPublisher, report_publisher or _StubReportPublisher()),
         slowpics_publisher=cast(SlowpicsPublisher, slowpics_publisher or _StubSlowpicsPublisher()),
+        setup_service=DefaultSetupService(),
     )
 
 

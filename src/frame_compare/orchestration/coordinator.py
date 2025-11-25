@@ -84,6 +84,7 @@ from src.frame_compare.services.publishers import (
     SlowpicsPublisher,
     SlowpicsPublisherRequest,
 )
+from src.frame_compare.services.setup import DefaultSetupService, SetupService
 from src.frame_compare.vs import ClipInitError, ClipProcessError
 from src.screenshot import ScreenshotError, generate_screenshots
 
@@ -113,6 +114,7 @@ def default_run_dependencies(
         alignment_workflow=alignment_workflow or build_alignment_workflow(),
         report_publisher=report_publisher or build_report_publisher(),
         slowpics_publisher=slowpics_publisher or build_slowpics_publisher(),
+        setup_service=DefaultSetupService(),
     )
 
 
@@ -122,7 +124,14 @@ class WorkflowCoordinator:
 
     def execute(self, request: RunRequest) -> RunResult:
         """Orchestrate the CLI workflow."""
-        env = setup.prepare_run_environment(request)
+        service_deps = self.dependencies or default_run_dependencies()
+        setup_service = service_deps.setup_service
+        metadata_resolver = service_deps.metadata_resolver
+        alignment_workflow = service_deps.alignment_workflow
+        report_publisher = service_deps.report_publisher
+        slowpics_publisher = service_deps.slowpics_publisher
+
+        env = setup_service.prepare_run_environment(request)
 
         cfg = env.cfg
         root = env.root
@@ -215,16 +224,6 @@ class WorkflowCoordinator:
                 snapshot=cached_snapshot,
                 snapshot_path=result_snapshot_path,
             )
-
-        service_deps = self.dependencies or default_run_dependencies(
-            cfg=cfg,
-            reporter=reporter,
-            cache_dir=root,
-        )
-        metadata_resolver = service_deps.metadata_resolver
-        alignment_workflow = service_deps.alignment_workflow
-        report_publisher = service_deps.report_publisher
-        slowpics_publisher = service_deps.slowpics_publisher
 
         json_tail = reporting.create_initial_json_tail(
             cfg=cfg,

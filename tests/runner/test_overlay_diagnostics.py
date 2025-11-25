@@ -19,6 +19,7 @@ from src.frame_compare.services.metadata import (
     MetadataResolveResult,
 )
 from src.frame_compare.services.publishers import ReportPublisher, SlowpicsPublisher
+from src.frame_compare.services.setup import DefaultSetupService
 from tests.helpers.runner_env import (
     _make_config,
     _make_runner_preflight,
@@ -81,6 +82,7 @@ def _build_dependencies(
         alignment_workflow=cast(AlignmentWorkflow, workflow),
         report_publisher=cast(ReportPublisher, _NullReportPublisher()),
         slowpics_publisher=cast(SlowpicsPublisher, _NullSlowpicsPublisher()),
+        setup_service=DefaultSetupService(),
     )
     return deps, resolver, workflow
 

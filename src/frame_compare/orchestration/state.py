@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterable, List, MutableMapping, Optional
+from typing import Any, Callable, Dict, Iterable, List, MutableMapping, Optional, TYPE_CHECKING
 
 from rich.console import Console
 
@@ -21,6 +21,9 @@ from src.frame_compare.result_snapshot import RunResultSnapshot
 from src.frame_compare.services.alignment import AlignmentResult, AlignmentWorkflow
 from src.frame_compare.services.metadata import MetadataResolver
 from src.frame_compare.services.publishers import ReportPublisher, SlowpicsPublisher
+
+if TYPE_CHECKING:
+    from src.frame_compare.services.setup import SetupService
 
 ReporterFactory = Callable[['RunRequest', Path, Console], CliOutputManagerProtocol]
 
@@ -96,6 +99,7 @@ class RunDependencies:
     alignment_workflow: AlignmentWorkflow
     report_publisher: ReportPublisher
     slowpics_publisher: SlowpicsPublisher
+    setup_service: "SetupService"
 
 
 @dataclass(slots=True)

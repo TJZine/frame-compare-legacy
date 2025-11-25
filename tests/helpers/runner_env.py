@@ -55,6 +55,8 @@ from src.frame_compare.cli_runtime import (
 from src.frame_compare.orchestration import coordinator as coordinator_module
 from src.frame_compare.orchestration import reporting as reporting_module
 from src.frame_compare.orchestration import setup as setup_module
+from src.frame_compare.orchestration.state import RunEnvironment, RunRequest
+from src.frame_compare.services.setup import SetupService
 
 __all__ = [
     "_CliRunnerEnv",
@@ -81,7 +83,18 @@ __all__ = [
     "VSPreviewPatch",
     "install_vspreview_presence",
     "install_which_map",
+    "MockSetupService",
 ]
+
+
+class MockSetupService:
+    """A setup service that returns a pre-configured environment."""
+
+    def __init__(self, env: RunEnvironment) -> None:
+        self.env = env
+
+    def prepare_run_environment(self, request: RunRequest) -> RunEnvironment:
+        return self.env
 
 
 @dataclass
