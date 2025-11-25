@@ -16,7 +16,7 @@ from rich.progress import Progress as _Progress  # noqa: F401
 from rich.progress import ProgressColumn as _ProgressColumn
 
 import src.frame_compare.alignment_preview as _alignment_preview_module
-import src.frame_compare.alignment_runner as _alignment_runner_module
+import src.frame_compare.alignment as _alignment_package
 import src.frame_compare.doctor as _doctor_module
 import src.frame_compare.planner as _planner_module
 import src.frame_compare.preflight as _preflight_constants
@@ -174,16 +174,16 @@ _collect_path_diagnostics = collect_path_diagnostics
 _prepare_preflight = prepare_preflight
 
 audio_alignment = _audio_alignment_module
-AudioAlignmentSummary = _alignment_runner_module.AudioAlignmentSummary
-AudioAlignmentDisplayData = _alignment_runner_module.AudioAlignmentDisplayData
-AudioMeasurementDetail = _alignment_runner_module.AudioMeasurementDetail
+AudioAlignmentSummary = _alignment_package.AudioAlignmentSummary
+AudioAlignmentDisplayData = _alignment_package.AudioAlignmentDisplayData
+AudioMeasurementDetail = _alignment_package.AudioMeasurementDetail
 _AudioAlignmentSummary = AudioAlignmentSummary
 _AudioAlignmentDisplayData = AudioAlignmentDisplayData
 _AudioMeasurementDetail = AudioMeasurementDetail
-apply_audio_alignment = _alignment_runner_module.apply_audio_alignment
-format_alignment_output = _alignment_runner_module.format_alignment_output
-_maybe_apply_audio_alignment = _alignment_runner_module.apply_audio_alignment
-resolve_alignment_reference = _alignment_runner_module.resolve_alignment_reference
+apply_audio_alignment = _alignment_package.apply_audio_alignment
+format_alignment_output = _alignment_package.format_alignment_output
+_maybe_apply_audio_alignment = _alignment_package.apply_audio_alignment
+resolve_alignment_reference = _alignment_package.resolve_alignment_reference
 _resolve_alignment_reference = resolve_alignment_reference
 _prompt_vspreview_offsets = _vspreview_module.prompt_offsets
 _apply_vspreview_manual_offsets = _vspreview_module.apply_manual_offsets

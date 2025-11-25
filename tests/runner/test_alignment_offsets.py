@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from src.frame_compare import alignment_runner
+from src.frame_compare.alignment import core as alignment_runner
 
 
 def test_reuse_vspreview_manual_offsets_normalizes_negative_trims():

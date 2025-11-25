@@ -350,14 +350,7 @@ class CLIAppError(RuntimeError):
         self.rich_message = rich_message or message
 
 
-from src.frame_compare import alignment_runner as _alignment_runner_module  # noqa: E402,I001
 
-AudioAlignmentSummary = _alignment_runner_module.AudioAlignmentSummary
-AudioMeasurementDetail = _alignment_runner_module.AudioMeasurementDetail
-AudioAlignmentDisplayData = _alignment_runner_module.AudioAlignmentDisplayData
-_AudioAlignmentSummary = AudioAlignmentSummary
-_AudioMeasurementDetail = AudioMeasurementDetail
-_AudioAlignmentDisplayData = AudioAlignmentDisplayData
 
 
 class CliOutputManagerProtocol(Protocol):
@@ -566,6 +559,16 @@ class NullCliOutputManager(CliOutputManagerProtocol):
     def iter_warnings(self) -> List[str]:
         return list(self._warnings)
 
+
+
+from src.frame_compare.alignment import models as _alignment_models  # noqa: E402,I001
+
+AudioAlignmentSummary = _alignment_models.AudioAlignmentSummary
+AudioMeasurementDetail = _alignment_models.AudioMeasurementDetail
+AudioAlignmentDisplayData = _alignment_models.AudioAlignmentDisplayData
+_AudioAlignmentSummary = AudioAlignmentSummary
+_AudioMeasurementDetail = AudioMeasurementDetail
+_AudioAlignmentDisplayData = AudioAlignmentDisplayData
 
 __all__ = [
     "CLIAppError",

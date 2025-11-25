@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 import src.frame_compare.alignment_preview as alignment_preview
-import src.frame_compare.alignment_runner as alignment_runner
+import src.frame_compare.alignment as alignment_runner
 import src.frame_compare.planner as planner_utils
 import src.frame_compare.preflight as preflight_utils
 import src.frame_compare.report as html_report

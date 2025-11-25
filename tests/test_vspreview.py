@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 import frame_compare as _frame_compare  # noqa: F401  # Ensure CLI shim initialises alignment_runner.
-from src.frame_compare import alignment_runner as alignment_runner_module
+from src.frame_compare import alignment as alignment_package
 from src.frame_compare import vspreview as vspreview_module
 from src.frame_compare.cli_runtime import _ClipPlan
 from tests.helpers.runner_env import (
@@ -20,10 +20,10 @@ from tests.helpers.runner_env import (
 )
 
 
-def _make_summary(reference: _ClipPlan, target: _ClipPlan, tmp_path: Path) -> alignment_runner_module._AudioAlignmentSummary:
+def _make_summary(reference: _ClipPlan, target: _ClipPlan, tmp_path: Path) -> alignment_package.AudioAlignmentSummary:
     """Helper constructing a minimal audio-alignment summary for VSPreview tests."""
 
-    return alignment_runner_module._AudioAlignmentSummary(
+    return alignment_package.AudioAlignmentSummary(
         offsets_path=tmp_path / "offsets.json",
         reference_name=reference.path.name,
         measurements=tuple(),
@@ -243,7 +243,7 @@ def test_apply_manual_offsets_updates_json_tail(tmp_path: Path) -> None:
     extra = _ClipPlan(path=tmp_path / "TargetB.mkv", metadata={"label": "Target B"}, effective_fps=(24, 1))
     plans = [reference, target, extra]
 
-    summary = alignment_runner_module._AudioAlignmentSummary(
+    summary = alignment_package.AudioAlignmentSummary(
         offsets_path=tmp_path / "offsets.json",
         reference_name=reference.path.name,
         measurements=tuple(),
@@ -289,7 +289,7 @@ def test_apply_manual_offsets_populates_seconds_without_known_fps(tmp_path: Path
 
     reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
     target = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
-    summary = alignment_runner_module._AudioAlignmentSummary(
+    summary = alignment_package.AudioAlignmentSummary(
         offsets_path=tmp_path / "offsets.json",
         reference_name=reference.path.name,
         measurements=tuple(),

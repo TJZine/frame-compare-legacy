@@ -15,7 +15,8 @@ from rich.console import Console
 import frame_compare
 import src.audio_alignment as audio_alignment_module
 import src.frame_compare.alignment_preview as alignment_preview_module
-import src.frame_compare.alignment_runner as alignment_runner_module
+import src.frame_compare.alignment as alignment_package
+import src.frame_compare.alignment.core as alignment_runner_module
 import src.frame_compare.cache as cache_module
 import src.frame_compare.config_helpers as config_helpers_module
 import src.frame_compare.core as core_module
@@ -243,6 +244,7 @@ def _patch_core_helper(monkeypatch: pytest.MonkeyPatch, attr: str, value: object
         frame_compare,
         core_module,
         alignment_runner_module,
+        alignment_package,
         vspreview_module,
         getattr(runner_module, "vspreview", None),
         preflight_module,

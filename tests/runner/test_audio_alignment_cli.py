@@ -19,7 +19,8 @@ import pytest
 from click.testing import CliRunner, Result
 
 import frame_compare
-import src.frame_compare.alignment_runner as alignment_runner_module
+import src.frame_compare.alignment as alignment_package
+import src.frame_compare.alignment.core as alignment_core_module
 import src.frame_compare.core as core_module
 import src.frame_compare.vs as vs_core_module
 from src.audio_alignment import AlignmentMeasurement, AudioStreamInfo, FpsHintMap
@@ -207,7 +208,7 @@ def test_audio_alignment_string_false_vspreview_triggers_measurement(
         raise _SentinelError
 
     _patch_audio_alignment(monkeypatch, "measure_offsets", boom)
-    assert alignment_runner_module.audio_alignment.measure_offsets is boom
+    assert alignment_core_module.audio_alignment.measure_offsets is boom
     monkeypatch.setattr(
         core_module.audio_alignment,
         "update_offsets_file",
@@ -388,7 +389,7 @@ def test_audio_alignment_prompt_reuse_hydrates_suggestions(
 
     json_tail = _make_json_tail_stub()
     reporter = NullCliOutputManager(quiet=True, verbose=False, no_color=True)
-    alignment_runner_module.format_alignment_output(
+    alignment_package.format_alignment_output(
         [reference_plan, target_plan],
         summary,
         display,
@@ -1156,7 +1157,7 @@ def test_vspreview_suggestions_use_measured_frames(
     )
     _patch_audio_alignment(monkeypatch, "probe_audio_streams", lambda _path: [stream_info])
 
-    summary, _display = alignment_runner_module.apply_audio_alignment(
+    summary, _display = alignment_package.apply_audio_alignment(
         plans,
         cfg,
         analyze_path=tmp_path,
@@ -1350,7 +1351,7 @@ def test_format_alignment_output_updates_json_tail(tmp_path: Path) -> None:
         suggestion_mode=False,
         manual_trim_starts={target_plan.path.name: 12},
     )
-    detail = alignment_runner_module._AudioMeasurementDetail(
+    detail = alignment_package.AudioMeasurementDetail(
         label="Target",
         stream="1/2",
         offset_seconds=0.25,
@@ -1379,7 +1380,7 @@ def test_format_alignment_output_updates_json_tail(tmp_path: Path) -> None:
     json_tail = _make_json_tail_stub()
     collected_warnings: list[str] = []
 
-    alignment_runner_module.format_alignment_output(
+    alignment_package.format_alignment_output(
         plans,
         summary,
         display,
@@ -1438,7 +1439,7 @@ def test_format_alignment_output_preserves_negative_manual_trim(tmp_path: Path) 
     reporter = NullCliOutputManager(quiet=True, verbose=False, no_color=True)
     json_tail = _make_json_tail_stub()
 
-    alignment_runner_module.format_alignment_output(
+    alignment_package.format_alignment_output(
         plans,
         summary,
         display,
@@ -2037,7 +2038,7 @@ def test_audio_alignment_block_and_json(
         cached_target_fps = fps_hints.get(target_path)
         assert cached_target_fps is not None, "Expected cached FPS hint for target clip"
         if isinstance(cached_target_fps, tuple):
-            fps_float = alignment_runner_module._fps_to_float(cached_target_fps)
+            fps_float = alignment_core_module._fps_to_float(cached_target_fps)
         else:
             fps_float = float(cached_target_fps)
         measurement.target_fps = fps_float
@@ -2046,7 +2047,7 @@ def test_audio_alignment_block_and_json(
         cached_ref_fps = fps_hints.get(reference_path)
         if cached_ref_fps is not None:
             measurement.reference_fps = (
-                alignment_runner_module._fps_to_float(cached_ref_fps)
+                alignment_core_module._fps_to_float(cached_ref_fps)
                 if isinstance(cached_ref_fps, tuple)
                 else float(cached_ref_fps)
             )
@@ -2776,7 +2777,7 @@ def test_apply_audio_alignment_derives_frames_from_seconds(
             )
         ]
 
-    monkeypatch.setattr(alignment_runner_module.audio_alignment, "probe_audio_streams", _fake_probe)
+    monkeypatch.setattr(alignment_core_module.audio_alignment, "probe_audio_streams", _fake_probe)
 
     offset_seconds = 47.78
     measurement = AlignmentMeasurement(
@@ -2789,7 +2790,7 @@ def test_apply_audio_alignment_derives_frames_from_seconds(
     )
 
     monkeypatch.setattr(
-        alignment_runner_module.audio_alignment,
+        alignment_core_module.audio_alignment,
         "measure_offsets",
         lambda *args, **kwargs: [measurement],
     )
@@ -2809,9 +2810,9 @@ def test_apply_audio_alignment_derives_frames_from_seconds(
             statuses[item.file.name] = "auto"
         return applied, statuses
 
-    monkeypatch.setattr(alignment_runner_module.audio_alignment, "update_offsets_file", _fake_update)
+    monkeypatch.setattr(alignment_core_module.audio_alignment, "update_offsets_file", _fake_update)
 
-    summary, display = alignment_runner_module.apply_audio_alignment(
+    summary, display = alignment_package.apply_audio_alignment(
         plans,
         cfg,
         analyze_path,
@@ -2820,7 +2821,7 @@ def test_apply_audio_alignment_derives_frames_from_seconds(
         reporter=reporter,
     )
 
-    fps_float = alignment_runner_module._fps_to_float(target.effective_fps)
+    fps_float = alignment_core_module._fps_to_float(target.effective_fps)
     assert fps_float > 0
     expected_frames = int(round(offset_seconds * fps_float))
     assert summary is not None
@@ -2849,7 +2850,7 @@ def test_plan_fps_map_prioritizes_available_metadata(tmp_path: Path) -> None:
     plan_e.fps_override = (48, 0)  # invalid denominator, should be skipped entirely
     plan_f.fps_override = (0, 1000)  # invalid numerator, should be skipped entirely
 
-    fps_map = alignment_runner_module._plan_fps_map([plan_a, plan_b, plan_c, plan_d, plan_e, plan_f])
+    fps_map = alignment_core_module._plan_fps_map([plan_a, plan_b, plan_c, plan_d, plan_e, plan_f])
     assert fps_map[plan_a.path] == (24000, 1001)
     assert fps_map[plan_b.path] == (24, 1)
     assert fps_map[plan_c.path] == (25, 1)

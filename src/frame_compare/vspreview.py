@@ -45,7 +45,7 @@ def resolve_subdir(root: Path, relative: str, *, purpose: str, allow_absolute: b
 
 if TYPE_CHECKING:  # pragma: no cover
     from src.audio_alignment import AlignmentMeasurement
-    from src.frame_compare.alignment_runner import (
+    from src.frame_compare.alignment import (
         AudioAlignmentDisplayData,
         AudioAlignmentSummary,
         AudioMeasurementDetail,
@@ -565,9 +565,9 @@ def prompt_offsets(
 
 
 def _measurement_detail_cls() -> type["AudioMeasurementDetail"]:
-    from src.frame_compare import alignment_runner as alignment_runner_module
+    from src.frame_compare import alignment as alignment_package
 
-    return alignment_runner_module.AudioMeasurementDetail
+    return alignment_package.AudioMeasurementDetail
 
 
 def apply_manual_offsets(
@@ -600,7 +600,7 @@ def apply_manual_offsets(
         reporter.warn(message)
         logger.warning(message)
 
-    from src.frame_compare import alignment_runner as alignment_runner_module
+    from src.frame_compare.alignment.core import apply_manual_offsets_logic
 
     # 1. Reuse the shared normalization logic from alignment_runner
     # We need to adapt the input 'deltas' to what _apply_manual_offsets_logic expects (vspreview_reuse).
@@ -616,7 +616,7 @@ def apply_manual_offsets(
 
     # Call the shared logic
     # cast deltas to dict[str, int] to satisfy type checker (Mapping vs dict)
-    delta_map, manual_trim_starts = alignment_runner_module.apply_manual_offsets_logic(
+    delta_map, manual_trim_starts = apply_manual_offsets_logic(
         plans,
         dict(deltas),
         dummy_display, # type: ignore
