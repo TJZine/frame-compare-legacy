@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, cast
 
 from src.frame_compare import runner as runner_module
+from src.frame_compare.orchestration import reporting
 from src.frame_compare.result_snapshot import SectionAvailability, SectionState
 from tests.helpers.runner_env import _make_config
 
@@ -32,7 +33,7 @@ def _apply(layout_data: Mapping[str, object], section_states: Dict[str, SectionS
             return
         section_states[section_id] = SectionState(availability=availability, note=note)
 
-    runner_module._apply_section_availability_overrides(
+    reporting.apply_section_availability_overrides(
         section_states,
         _mark,
         layout_data=cast(Mapping[str, Any], layout_data),

@@ -11,9 +11,14 @@ import pytest
 from src.datatypes import AppConfig
 from src.frame_compare import runner as runner_module
 from src.frame_compare.analysis import CacheLoadResult, FrameMetricsCacheInfo, SelectionDetail
-from src.frame_compare.cli_runtime import ClipPlan, SlowpicsTitleInputs
-from src.frame_compare.services.alignment import AlignmentRequest, AlignmentResult
-from src.frame_compare.services.metadata import MetadataResolveRequest, MetadataResolveResult
+from src.frame_compare.cli_runtime import CliOutputManager, ClipPlan, SlowpicsTitleInputs
+from src.frame_compare.services.alignment import AlignmentRequest, AlignmentResult, AlignmentWorkflow
+from src.frame_compare.services.metadata import (
+    MetadataResolver,
+    MetadataResolveRequest,
+    MetadataResolveResult,
+)
+from src.frame_compare.services.publishers import ReportPublisher, SlowpicsPublisher
 from tests.helpers.runner_env import (
     _make_config,
     _make_runner_preflight,
@@ -72,10 +77,10 @@ def _build_dependencies(
     resolver = _StubMetadataResolver(result)
     workflow = alignment_workflow or _StubAlignmentWorkflow()
     deps = runner_module.RunDependencies(
-        metadata_resolver=cast(runner_module.MetadataResolver, resolver),
-        alignment_workflow=cast(runner_module.AlignmentWorkflow, workflow),
-        report_publisher=cast(runner_module.ReportPublisher, _NullReportPublisher()),
-        slowpics_publisher=cast(runner_module.SlowpicsPublisher, _NullSlowpicsPublisher()),
+        metadata_resolver=cast(MetadataResolver, resolver),
+        alignment_workflow=cast(AlignmentWorkflow, workflow),
+        report_publisher=cast(ReportPublisher, _NullReportPublisher()),
+        slowpics_publisher=cast(SlowpicsPublisher, _NullSlowpicsPublisher()),
     )
     return deps, resolver, workflow
 
@@ -164,16 +169,18 @@ def _install_analysis_stubs(
         }
         return [10], {10: "Auto"}, details
 
-    monkeypatch.setattr(runner_module, "select_frames", fake_select)
-    monkeypatch.setattr(runner_module, "selection_details_to_json", _selection_details_to_json)
+    import src.frame_compare.orchestration.coordinator as coordinator_module
+
+    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
+    monkeypatch.setattr(coordinator_module, "selection_details_to_json", _selection_details_to_json)
     monkeypatch.setattr(
-        runner_module,
+        coordinator_module,
         "probe_cached_metrics",
         lambda *_args, **_kwargs: CacheLoadResult(metrics=None, status="missing", reason=None),
     )
-    monkeypatch.setattr(runner_module, "selection_hash_for_config", lambda *_args, **_kwargs: "hash")
-    monkeypatch.setattr(runner_module, "export_selection_metadata", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(runner_module, "write_selection_cache_file", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(coordinator_module, "selection_hash_for_config", lambda *_args, **_kwargs: "hash")
+    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *_args, **_kwargs: None)
 
 
 def _install_render_stubs(monkeypatch: pytest.MonkeyPatch, out_dir: Path) -> None:
@@ -196,10 +203,15 @@ def _install_render_stubs(monkeypatch: pytest.MonkeyPatch, out_dir: Path) -> Non
         for plan in plans:
             plan.clip = types.SimpleNamespace(width=plan.source_width, height=plan.source_height, num_frames=plan.source_num_frames or 120)
 
-    monkeypatch.setattr(runner_module, "generate_screenshots", fake_generate)
-    monkeypatch.setattr(runner_module.selection_utils, "init_clips", fake_init_clips)
+    import src.frame_compare.cache as cache_utils
+    import src.frame_compare.orchestration.coordinator as coordinator_module
+    import src.frame_compare.selection as selection_utils
+    from src.frame_compare import vs as vs_core
+
+    monkeypatch.setattr(coordinator_module, "generate_screenshots", fake_generate)
+    monkeypatch.setattr(selection_utils, "init_clips", fake_init_clips)
     monkeypatch.setattr(
-        runner_module.cache_utils,
+        cache_utils,
         "build_cache_info",
         lambda *_args, **_kwargs: FrameMetricsCacheInfo(
             path=out_dir / "generated.compframes",
@@ -213,7 +225,7 @@ def _install_render_stubs(monkeypatch: pytest.MonkeyPatch, out_dir: Path) -> Non
         ),
     )
     monkeypatch.setattr(
-        runner_module.vs_core,
+        vs_core,
         "resolve_effective_tonemap",
         lambda color_cfg, props=None: {
             "preset": getattr(color_cfg, "preset", "reference"),
@@ -256,7 +268,7 @@ def _common_setup(
     per_frame_nits: bool,
     cli_override: bool | None,
     alignment_workflow: _StubAlignmentWorkflow | None = None,
-    reporter: runner_module.CliOutputManager | None = None,
+    reporter: CliOutputManager | None = None,
 ) -> tuple[runner_module.RunRequest, runner_module.RunDependencies, MetadataResolveResult]:
     workspace = tmp_path / "workspace"
     media_root = workspace / "media"
@@ -264,7 +276,8 @@ def _common_setup(
     cfg, config_path = _prepare_config(workspace, media_root, per_frame_nits=per_frame_nits)
     preflight = _make_runner_preflight(workspace, media_root, cfg)
     _patch_core_helper(monkeypatch, "prepare_preflight", lambda **_kwargs: preflight)
-    monkeypatch.setattr(runner_module.media_utils, "discover_media", lambda _root: list(files))
+    import src.frame_compare.media as media_utils
+    monkeypatch.setattr(media_utils, "discover_media", lambda _root: list(files))
     metadata_result = _make_metadata_result(files)
     deps, _, _ = _build_dependencies(metadata_result, alignment_workflow=alignment_workflow)
     _install_analysis_stubs(monkeypatch, score=0.6)
@@ -345,7 +358,7 @@ def test_cli_override_disables_frame_metrics(tmp_path: Path, monkeypatch: pytest
 def test_runner_layout_preserves_vspreview_suggestions_from_json_tail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    recording_output_manager: runner_module.CliOutputManager,
+    recording_output_manager: CliOutputManager,
 ) -> None:
     workflow = _StubAlignmentWorkflow(suggested_frames=5, suggested_seconds=0.25)
     request, deps, _ = _common_setup(

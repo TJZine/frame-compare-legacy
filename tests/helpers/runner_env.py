@@ -52,6 +52,9 @@ from src.frame_compare.cli_runtime import (
     JsonTail,
     _AudioAlignmentDisplayData,
 )
+from src.frame_compare.orchestration import coordinator as coordinator_module
+from src.frame_compare.orchestration import reporting as reporting_module
+from src.frame_compare.orchestration import setup as setup_module
 
 __all__ = [
     "_CliRunnerEnv",
@@ -154,9 +157,10 @@ class _CliRunnerEnv:
         module_targets = (
             core_module,
             frame_compare,
-            runner_module.core,
             preflight_module,
             getattr(runner_module, "preflight_utils", None),
+            setup_module,
+            coordinator_module,
         )
         for module in module_targets:
             if module is None:
@@ -224,7 +228,7 @@ def _patch_core_helper(monkeypatch: pytest.MonkeyPatch, attr: str, value: object
 
     targets = [
         frame_compare,
-        runner_module.core,
+        core_module,
         alignment_runner_module,
         vspreview_module,
         getattr(runner_module, "vspreview", None),
@@ -245,6 +249,9 @@ def _patch_core_helper(monkeypatch: pytest.MonkeyPatch, attr: str, value: object
         getattr(runner_module, "planner_utils", None),
         tmdb_workflow_module,
         getattr(runner_module, "tmdb_workflow", None),
+        coordinator_module,
+        setup_module,
+        reporting_module,
     ]
     for target in targets:
         if target is None:
@@ -258,12 +265,13 @@ def _patch_vs_core(monkeypatch: pytest.MonkeyPatch, attr: str, value: object) ->
     """Patch VapourSynth helpers in both the shim module and the runner module."""
 
     monkeypatch.setattr(vs_core_module, attr, value, raising=False)
-    monkeypatch.setattr(runner_module.vs_core, attr, value, raising=False)
+    monkeypatch.setattr(coordinator_module.vs_core, attr, value, raising=False)
 
 
 def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: object) -> None:
     """Patch shared runner dependencies exposed at the runner module level."""
 
+    import src.frame_compare.cli_runtime as cli_runtime_module
     targets = [
         frame_compare,
         core_module,
@@ -275,7 +283,12 @@ def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: obje
         getattr(runner_module, "config_helpers", None),
         alignment_preview_module,
         tmdb_workflow_module,
+        tmdb_workflow_module,
         getattr(runner_module, "tmdb_workflow", None),
+        coordinator_module,
+        setup_module,
+        reporting_module,
+        cli_runtime_module,
     ]
     for target in targets:
         if target is None:
@@ -291,7 +304,6 @@ def _patch_audio_alignment(monkeypatch: pytest.MonkeyPatch, attr: str, value: ob
     if target is not None:
         monkeypatch.setattr(target, attr, value, raising=False)
     monkeypatch.setattr(core_module.audio_alignment, attr, value, raising=False)
-    monkeypatch.setattr(runner_module.core.audio_alignment, attr, value, raising=False)
     monkeypatch.setattr(alignment_runner_module.audio_alignment, attr, value, raising=False)
     monkeypatch.setattr(vspreview_module.audio_alignment, attr, value, raising=False)
     runner_alignment = getattr(runner_module, "alignment_runner", None)
@@ -545,13 +557,7 @@ def _patch_load_config(monkeypatch: pytest.MonkeyPatch, cfg: AppConfig) -> None:
     monkeypatch.setattr(core_module, "load_config", lambda *_args, **_kwargs: cfg)
     monkeypatch.setattr(frame_compare, "load_config", lambda *_args, **_kwargs: cfg)
     monkeypatch.setattr(preflight_module, "load_config", lambda *_args, **_kwargs: cfg)
-    if hasattr(runner_module, "preflight_utils"):
-        monkeypatch.setattr(
-            runner_module.preflight_utils,
-            "load_config",
-            lambda *_args, **_kwargs: cfg,
-            raising=False,
-        )
+    monkeypatch.setattr(setup_module, "load_config", lambda *_args, **_kwargs: cfg, raising=False)
 
 
 def _selection_details_to_json(

@@ -33,9 +33,22 @@ from src.datatypes import (
     TMDBConfig,
 )
 from src.frame_compare import runner as runner_module
-from src.frame_compare.analysis import CacheLoadResult, FrameMetricsCacheInfo, SelectionDetail
+from src.frame_compare import vs as vs_core_module
+from src.frame_compare.analysis import (
+    CacheLoadResult,
+    FrameMetricsCacheInfo,
+    SelectionDetail,
+)
 from src.frame_compare.interfaces import PublisherIO, ReportRendererProtocol, SlowpicsClientProtocol
-from src.frame_compare.services.publishers import UploadProgressTracker
+from src.frame_compare.orchestration import coordinator as coordinator_module
+from src.frame_compare.orchestration.state import RunDependencies, RunRequest
+from src.frame_compare.services.publishers import (
+    ReportPublisher,
+    ReportPublisherRequest,
+    SlowpicsPublisher,
+    SlowpicsPublisherRequest,
+    UploadProgressTracker,
+)
 from src.tmdb import TMDBAmbiguityError, TMDBCandidate, TMDBResolution, TMDBResolutionError
 from tests.helpers.runner_env import (
     _CliRunnerEnv,
@@ -114,14 +127,14 @@ def _install_publisher_stubs(
     *,
     slowpics_upload: Any = None,
     slowpics_url: str = "https://slow.pics/test",
-) -> tuple[list[runner_module.SlowpicsPublisherRequest], list[runner_module.ReportPublisherRequest]]:
+) -> tuple[list[SlowpicsPublisherRequest], list[ReportPublisherRequest]]:
     """
     Replace default publishers with stubs that record requests and avoid real IO.
     """
 
     io_stub = _PublisherIOStub()
-    slowpics_requests: list[runner_module.SlowpicsPublisherRequest] = []
-    report_requests: list[runner_module.ReportPublisherRequest] = []
+    slowpics_requests: list[SlowpicsPublisherRequest] = []
+    report_requests: list[ReportPublisherRequest] = []
 
     def _upload_with_progress(
         image_paths: list[str],
@@ -136,35 +149,36 @@ def _install_publisher_stubs(
             return cast(str, slowpics_upload(image_paths, out_dir, cfg, progress_callback=progress_callback))
         return slowpics_url
 
-    slowpics_publisher = runner_module.SlowpicsPublisher(
+    slowpics_publisher = SlowpicsPublisher(
         client=_SlowpicsClientStub(_upload_with_progress),
         io=io_stub,
     )
     original_slowpics_publish = slowpics_publisher.publish
 
-    def _record_slowpics(request: runner_module.SlowpicsPublisherRequest):
+    def _record_slowpics(request: SlowpicsPublisherRequest):
         slowpics_requests.append(request)
         return original_slowpics_publish(request)
 
     slowpics_publisher.publish = _record_slowpics  # type: ignore[assignment]
 
-    report_publisher = runner_module.ReportPublisher(renderer=_StubReportRenderer(), io=io_stub)
+    report_publisher = ReportPublisher(renderer=_StubReportRenderer(), io=io_stub)
     original_report_publish = report_publisher.publish
 
-    def _record_report(request: runner_module.ReportPublisherRequest):
+    def _record_report(request: ReportPublisherRequest):
         report_requests.append(request)
         return original_report_publish(request)
 
     report_publisher.publish = _record_report  # type: ignore[assignment]
 
     base_deps = runner_module.default_run_dependencies()
-    dependencies = runner_module.RunDependencies(
+    dependencies = RunDependencies(
         metadata_resolver=base_deps.metadata_resolver,
         alignment_workflow=base_deps.alignment_workflow,
         report_publisher=report_publisher,
         slowpics_publisher=slowpics_publisher,
     )
     monkeypatch.setattr(runner_module, "default_run_dependencies", lambda **kwargs: dependencies)
+    monkeypatch.setattr(coordinator_module, "default_run_dependencies", lambda **kwargs: dependencies)
 
     return slowpics_requests, report_requests
 
@@ -321,7 +335,7 @@ def test_runner_auto_upload_cleans_screens_dir(tmp_path: Path, monkeypatch: pyte
     _patch_core_helper(monkeypatch, "_discover_media", lambda _root: list(files))
     _patch_core_helper(monkeypatch, "parse_metadata", lambda *_: list(metadata))
     _patch_core_helper(monkeypatch, "_build_plans", lambda *_: list(plans))
-    monkeypatch.setattr(runner_module.core, "_pick_analyze_file", lambda *_args, **_kwargs: files[0])
+    monkeypatch.setattr(core_module, "_pick_analyze_file", lambda *_args, **_kwargs: files[0])
 
     cache_info = FrameMetricsCacheInfo(
         path=workspace / cfg.analysis.frame_data_filename,
@@ -336,8 +350,8 @@ def test_runner_auto_upload_cleans_screens_dir(tmp_path: Path, monkeypatch: pyte
     _patch_core_helper(monkeypatch, "_build_cache_info", lambda *_: cache_info)
     _patch_core_helper(monkeypatch, "_maybe_apply_audio_alignment", lambda *args, **kwargs: (None, None))
 
-    monkeypatch.setattr(runner_module.vs_core, "configure", lambda **_: None)
-    monkeypatch.setattr(runner_module.vs_core, "set_ram_limit", lambda *_: None)
+    monkeypatch.setattr(vs_core_module, "configure", lambda **_: None)
+    monkeypatch.setattr(vs_core_module, "set_ram_limit", lambda *_: None)
 
     def fake_init_clip(*_args, **_kwargs):
         return types.SimpleNamespace(
@@ -348,7 +362,7 @@ def test_runner_auto_upload_cleans_screens_dir(tmp_path: Path, monkeypatch: pyte
             num_frames=120,
         )
 
-    monkeypatch.setattr(runner_module.vs_core, "init_clip", fake_init_clip)
+    monkeypatch.setattr(vs_core_module, "init_clip", fake_init_clip)
 
     def fake_select(
         *_args,
@@ -359,16 +373,16 @@ def test_runner_auto_upload_cleans_screens_dir(tmp_path: Path, monkeypatch: pyte
         }
         return [10], {10: "Auto"}, selection_details
 
-    monkeypatch.setattr(runner_module, "select_frames", fake_select)
-    monkeypatch.setattr(runner_module, "selection_details_to_json", _selection_details_to_json)
-    monkeypatch.setattr(
-        runner_module,
+    _patch_runner_module(monkeypatch, "select_frames", fake_select)
+    _patch_runner_module(monkeypatch, "selection_details_to_json", _selection_details_to_json)
+    _patch_runner_module(
+        monkeypatch,
         "probe_cached_metrics",
         lambda *_: CacheLoadResult(metrics=None, status="missing", reason=None),
     )
-    monkeypatch.setattr(runner_module, "selection_hash_for_config", lambda *_: "selection-hash")
-    monkeypatch.setattr(runner_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    _patch_runner_module(monkeypatch, "selection_hash_for_config", lambda *_: "selection-hash")
+    _patch_runner_module(monkeypatch, "write_selection_cache_file", lambda *args, **kwargs: None)
+    _patch_runner_module(monkeypatch, "export_selection_metadata", lambda *args, **kwargs: None)
 
     def fake_generate(
         clips: Sequence[object],
@@ -385,7 +399,7 @@ def test_runner_auto_upload_cleans_screens_dir(tmp_path: Path, monkeypatch: pyte
         shot.write_text("data", encoding="utf-8")
         return [str(shot)]
 
-    monkeypatch.setattr(runner_module, "generate_screenshots", fake_generate)
+    _patch_runner_module(monkeypatch, "generate_screenshots", fake_generate)
 
     uploads: list[tuple[list[str], Path]] = []
 
@@ -404,7 +418,7 @@ def test_runner_auto_upload_cleans_screens_dir(tmp_path: Path, monkeypatch: pyte
     _install_publisher_stubs(monkeypatch, slowpics_upload=fake_upload)
 
     monkeypatch.setattr(runner_module, "impl", frame_compare, raising=False)
-    request = runner_module.RunRequest(
+    request = RunRequest(
         config_path=str(preflight.config_path),
         root_override=str(workspace),
     )
@@ -464,7 +478,7 @@ def test_cli_tmdb_resolution_populates_slowpics(
     async def fake_resolve(*_, **__):  # pragma: no cover - simple stub
         return resolution
 
-    _patch_runner_module(monkeypatch, "resolve_tmdb", fake_resolve)
+    monkeypatch.setattr(tmdb_utils, "resolve_tmdb", fake_resolve)
     _patch_vs_core(monkeypatch, "set_ram_limit", lambda limit: None)
 
     def fake_init(
@@ -607,7 +621,7 @@ def test_shortcut_write_failure_sets_json_tail(
     async def fake_resolve(*_, **__):  # pragma: no cover - deterministic stub
         return resolution
 
-    _patch_runner_module(monkeypatch, "resolve_tmdb", fake_resolve)
+    monkeypatch.setattr(tmdb_utils, "resolve_tmdb", fake_resolve)
     _patch_vs_core(monkeypatch, "set_ram_limit", lambda limit: None)
     _patch_vs_core(
         monkeypatch,
@@ -707,7 +721,7 @@ def test_cli_tmdb_resolution_sets_default_collection_name(
     async def fake_resolve(*_, **__):
         return resolution
 
-    _patch_runner_module(monkeypatch, "resolve_tmdb", fake_resolve)
+    monkeypatch.setattr(tmdb_utils, "resolve_tmdb", fake_resolve)
     _patch_vs_core(monkeypatch, "set_ram_limit", lambda limit: None)
     _patch_vs_core(
         monkeypatch,
@@ -789,7 +803,7 @@ def test_collection_suffix_appended(
     async def fake_resolve(*_, **__):
         return resolution
 
-    _patch_runner_module(monkeypatch, "resolve_tmdb", fake_resolve)
+    monkeypatch.setattr(tmdb_utils, "resolve_tmdb", fake_resolve)
     _patch_vs_core(monkeypatch, "set_ram_limit", lambda limit: None)
     _patch_vs_core(monkeypatch, "init_clip", lambda *_, **__: types.SimpleNamespace(width=1280, height=720, fps_num=24000, fps_den=1001, num_frames=1200))
     _patch_runner_module(monkeypatch, "select_frames", lambda *_, **__: [5, 15])
@@ -858,7 +872,7 @@ def test_cli_tmdb_manual_override(
     def fake_resolve(*_: object, **__: object) -> None:
         raise TMDBAmbiguityError([candidate])
 
-    _patch_runner_module(monkeypatch, "resolve_tmdb", fake_resolve)
+    monkeypatch.setattr(tmdb_utils, "resolve_tmdb", fake_resolve)
     monkeypatch.setattr(tmdb_utils, "_prompt_manual_tmdb", lambda candidates: ("TV", "9999"))
     _patch_vs_core(monkeypatch, "set_ram_limit", lambda limit: None)
     _patch_vs_core(
@@ -922,7 +936,7 @@ def test_cli_tmdb_confirmation_manual_id(
     async def fake_resolve(*_: object, **__: object) -> TMDBResolution:
         return resolution
 
-    _patch_runner_module(monkeypatch, "resolve_tmdb", fake_resolve)
+    monkeypatch.setattr(tmdb_utils, "resolve_tmdb", fake_resolve)
     monkeypatch.setattr(tmdb_utils, "_prompt_tmdb_confirmation", lambda res: (True, ("MOVIE", "999")))
     _patch_vs_core(monkeypatch, "set_ram_limit", lambda limit: None)
     _patch_vs_core(
@@ -985,7 +999,7 @@ def test_cli_tmdb_confirmation_rejects(
     async def fake_resolve(*_: object, **__: object) -> TMDBResolution:
         return resolution
 
-    _patch_runner_module(monkeypatch, "resolve_tmdb", fake_resolve)
+    monkeypatch.setattr(tmdb_utils, "resolve_tmdb", fake_resolve)
     monkeypatch.setattr(tmdb_utils, "_prompt_tmdb_confirmation", lambda res: (False, None))
     _patch_vs_core(monkeypatch, "set_ram_limit", lambda limit: None)
     _patch_vs_core(monkeypatch, "init_clip", lambda *_, **__: types.SimpleNamespace(width=1280, height=720, fps_num=24000, fps_den=1001, num_frames=1800))

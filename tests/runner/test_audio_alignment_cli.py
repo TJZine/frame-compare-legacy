@@ -20,6 +20,7 @@ from click.testing import CliRunner, Result
 import frame_compare
 import src.frame_compare.alignment_runner as alignment_runner_module
 import src.frame_compare.core as core_module
+import src.frame_compare.vs as vs_core_module
 from src.audio_alignment import AlignmentMeasurement, AudioStreamInfo, FpsHintMap
 from src.datatypes import (
     AnalysisConfig,
@@ -86,9 +87,10 @@ def _setup_cli_analysis_environment(
         lambda _files, _metadata, _target, **_kwargs: reference_path,
     )
 
-    monkeypatch.setattr(runner_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner_module, "export_selection_metadata", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner_module, "generate_screenshots", lambda *args, **kwargs: [])
+    import src.frame_compare.orchestration.coordinator as coordinator_module
+    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(coordinator_module, "generate_screenshots", lambda *args, **kwargs: [])
 
     cache_file = cli_runner_env.media_root / cfg.analysis.frame_data_filename
     return reference_path, target_path, cache_file
@@ -569,9 +571,10 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
 
     _patch_vs_core(monkeypatch, "init_clip", fake_init_clip)
 
-    monkeypatch.setattr(runner_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner_module, "export_selection_metadata", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner_module, "generate_screenshots", lambda *args, **kwargs: [])
+    import src.frame_compare.orchestration.coordinator as coordinator_module
+    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(coordinator_module, "generate_screenshots", lambda *args, **kwargs: [])
 
     def fake_select(
         clip: types.SimpleNamespace,
@@ -589,7 +592,7 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
         assert cache_probe is not None and cache_probe.status == "reused"
         return [10, 20]
 
-    monkeypatch.setattr(runner_module, "select_frames", fake_select)
+    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
 
     cache_probes: list[FrameMetricsCacheInfo] = []
 
@@ -597,7 +600,7 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
         cache_probes.append(info)
         return CacheLoadResult(metrics=None, status="reused", reason=None)
 
-    monkeypatch.setattr(runner_module, "probe_cached_metrics", fake_probe)
+    monkeypatch.setattr(coordinator_module, "probe_cached_metrics", fake_probe)
 
     result = frame_compare.run_cli(
         None,
@@ -642,7 +645,8 @@ def test_run_cli_surfaces_cache_recompute_reason(
         assert info.path == cache_file.resolve()
         return CacheLoadResult(metrics=None, status="stale", reason=reason_code)
 
-    monkeypatch.setattr(runner_module, "probe_cached_metrics", fake_probe)
+    import src.frame_compare.orchestration.coordinator as coordinator_module
+    monkeypatch.setattr(coordinator_module, "probe_cached_metrics", fake_probe)
 
     observed_probes: list[CacheLoadResult | None] = []
 
@@ -659,7 +663,7 @@ def test_run_cli_surfaces_cache_recompute_reason(
             return frames, categories, {}
         return frames
 
-    monkeypatch.setattr(runner_module, "select_frames", fake_select)
+    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
 
     result = frame_compare.run_cli(None, None)
 
@@ -685,7 +689,8 @@ def test_run_cli_reports_missing_cache_reason(
     def _probe_unused(*_args: object, **_kwargs: object) -> CacheLoadResult:
         raise AssertionError("probe_cached_metrics should not be called when cache file is missing")
 
-    monkeypatch.setattr(runner_module, "probe_cached_metrics", _probe_unused)
+    import src.frame_compare.orchestration.coordinator as coordinator_module
+    monkeypatch.setattr(coordinator_module, "probe_cached_metrics", _probe_unused)
 
     observed_probes: list[CacheLoadResult | None] = []
 
@@ -702,7 +707,7 @@ def test_run_cli_reports_missing_cache_reason(
             return frames, categories, {}
         return frames
 
-    monkeypatch.setattr(runner_module, "select_frames", fake_select)
+    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
 
     result = frame_compare.run_cli(None, None)
 
@@ -1696,7 +1701,7 @@ def test_runner_audio_alignment_summary_passthrough(
     _patch_core_helper(monkeypatch, "_discover_media", lambda _root: list(files))
     _patch_core_helper(monkeypatch, "parse_metadata", lambda *_: list(metadata))
     _patch_core_helper(monkeypatch, "_build_plans", lambda *_: list(plans))
-    monkeypatch.setattr(runner_module.core, "_pick_analyze_file", lambda *_args, **_kwargs: files[0])
+    monkeypatch.setattr(core_module, "_pick_analyze_file", lambda *_args, **_kwargs: files[0])
 
     cache_info = FrameMetricsCacheInfo(
         path=workspace / cfg.analysis.frame_data_filename,
@@ -1751,24 +1756,25 @@ def test_runner_audio_alignment_summary_passthrough(
         lambda *args, **kwargs: (summary, display),
     )
 
-    monkeypatch.setattr(runner_module.vs_core, "configure", lambda **_: None)
-    monkeypatch.setattr(runner_module.vs_core, "set_ram_limit", lambda *_: None)
-    monkeypatch.setattr(runner_module.vs_core, "init_clip", lambda *args, **kwargs: types.SimpleNamespace(num_frames=120, fps_num=24000, fps_den=1001, width=1280, height=720))
+    monkeypatch.setattr(vs_core_module, "configure", lambda **_: None)
+    monkeypatch.setattr(vs_core_module, "set_ram_limit", lambda *_: None)
+    monkeypatch.setattr(vs_core_module, "init_clip", lambda *args, **kwargs: types.SimpleNamespace(num_frames=120, fps_num=24000, fps_den=1001, width=1280, height=720))
+    import src.frame_compare.orchestration.coordinator as coordinator_module
     monkeypatch.setattr(
-        runner_module,
+        coordinator_module,
         "probe_cached_metrics",
         lambda *_: CacheLoadResult(metrics=None, status="missing", reason=None),
     )
-    monkeypatch.setattr(runner_module, "selection_hash_for_config", lambda *_: "selection-hash")
-    monkeypatch.setattr(runner_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(coordinator_module, "selection_hash_for_config", lambda *_: "selection-hash")
+    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        runner_module,
+        coordinator_module,
         "select_frames",
         lambda *args, **kwargs: ([5], {5: "Auto"}, {5: SelectionDetail(frame_index=5, label="Auto", score=None, source="Test", timecode="00:00:05.0")}),
     )
-    monkeypatch.setattr(runner_module, "selection_details_to_json", _selection_details_to_json)
-    monkeypatch.setattr(runner_module, "generate_screenshots", lambda *args, **kwargs: [str(media_root / "shot.png")])
+    monkeypatch.setattr(coordinator_module, "selection_details_to_json", _selection_details_to_json)
+    monkeypatch.setattr(coordinator_module, "generate_screenshots", lambda *args, **kwargs: [str(media_root / "shot.png")])
 
     monkeypatch.setattr(runner_module, "impl", frame_compare, raising=False)
     request = runner_module.RunRequest(
