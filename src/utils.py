@@ -74,14 +74,14 @@ def _call_guessit(file_name: str) -> Mapping[str, Any] | None:
     """
     try:
         module = import_module("guessit")
-    except Exception:
+    except ImportError:
         return None
     parser = getattr(module, "guessit", None)
     if not callable(parser):
         return None
     try:
         result = parser(file_name)
-    except Exception:
+    except (ValueError, TypeError, IndexError, AttributeError, LookupError):
         return None
     return _coerce_mapping(result)
 
@@ -98,14 +98,14 @@ def _call_anitopy(file_name: str) -> Mapping[str, Any]:
     """
     try:
         module = import_module("anitopy")
-    except Exception:
+    except ImportError:
         return {}
     parser = getattr(module, "parse", None)
     if not callable(parser):
         return {}
     try:
         result = parser(file_name)
-    except Exception:
+    except (ValueError, TypeError, IndexError, AttributeError, LookupError):
         return {}
     mapped = _coerce_mapping(result)
     return dict(mapped) if mapped else {}

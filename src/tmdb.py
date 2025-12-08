@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -307,14 +308,15 @@ def _extract_year_from_result(payload: Dict[str, Any], category: str) -> Optiona
 def _call_guessit(filename: str) -> Dict[str, Any]:
     try:
         module = import_module("guessit")
-    except Exception:
+    except ImportError:
         return {}
     parser = getattr(module, "guessit", None)
     if not callable(parser):
         return {}
     try:
         result = parser(filename)
-    except Exception:
+    except (ValueError, TypeError, IndexError, AttributeError, LookupError) as exc:
+        logger.debug("GuessIt failed for %s: %s", filename, exc)
         return {}
     if isinstance(result, dict):
         return dict(result)
@@ -324,14 +326,15 @@ def _call_guessit(filename: str) -> Dict[str, Any]:
 def _call_anitopy(filename: str) -> Dict[str, Any]:
     try:
         module = import_module("anitopy")
-    except Exception:
+    except ImportError:
         return {}
     parser = getattr(module, "parse", None)
     if not callable(parser):
         return {}
     try:
         result = parser(filename)
-    except Exception:
+    except (ValueError, TypeError, IndexError, AttributeError, LookupError) as exc:
+        logger.debug("Anitopy failed for %s: %s", filename, exc)
         return {}
     if isinstance(result, dict):
         return dict(result)
@@ -487,7 +490,7 @@ async def _http_request(
             on_backoff=_on_backoff,
             timeout=effective_timeout,
         )
-    except httpx.RequestError as exc:  # pragma: no cover - rare network error
+    except httpx.RequestError as exc:
         raise TMDBResolutionError(f"TMDB request failed after retries: {exc}") from exc
     except net.BackoffError as exc:
         raise TMDBResolutionError("TMDB request failed after retries") from exc
@@ -499,7 +502,7 @@ async def _http_request(
         )
     try:
         payload_obj = response.json()
-    except ValueError as exc:  # pragma: no cover - unexpected
+    except (ValueError, json.JSONDecodeError) as exc:
         raise TMDBResolutionError("TMDB returned invalid JSON") from exc
     payload = _ensure_dict(payload_obj, context=f"{path} response")
     _CACHE.set(key, payload, ttl_seconds=cache_ttl)

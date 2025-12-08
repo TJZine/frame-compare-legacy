@@ -197,7 +197,7 @@ def _normalise_to_8bit(
         return None
     try:
         sample_type_int = int(sample_type)
-    except Exception:
+    except (ValueError, TypeError):
         sample_type_int = None
     if sample_type_int == 1:  # FLOAT
         return float(value) * 255.0
@@ -262,7 +262,7 @@ def _detect_rgb_color_range(
 
     try:
         stats_clip = cast(Any, plane_stats(clip))
-    except Exception as exc:
+    except (ValueError, TypeError, RuntimeError) as exc:
         log.debug("[TM RANGE] %s failed to create PlaneStats node: %s", label, exc)
         return (None, None)
 
@@ -286,7 +286,7 @@ def _detect_rgb_color_range(
     for idx in indices:
         try:
             frame = stats_clip.get_frame(idx)
-        except Exception as exc:
+        except (ValueError, RuntimeError) as exc:
             log.debug("[TM RANGE] %s failed to sample frame %s: %s", label, idx, exc)
             continue
         props = getattr(frame, "props", {})
@@ -335,7 +335,7 @@ def _compute_luma_bounds(clip: Any) -> tuple[Optional[float], Optional[float]]:
         return (None, None)
     try:
         stats_clip = cast(Any, plane_stats(clip))
-    except Exception:
+    except (ValueError, TypeError, RuntimeError):
         return (None, None)
 
     total_frames = getattr(clip, "num_frames", 0) or 0
@@ -350,7 +350,7 @@ def _compute_luma_bounds(clip: Any) -> tuple[Optional[float], Optional[float]]:
     for idx in indices:
         try:
             frame = stats_clip.get_frame(idx)
-        except Exception:
+        except (ValueError, RuntimeError):
             break
         props = getattr(frame, "props", {})
         y_min = _coerce_float(props.get("PlaneStatsMin"))

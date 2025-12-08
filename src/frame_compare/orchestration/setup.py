@@ -33,7 +33,7 @@ def emit_dovi_debug(payload: Mapping[str, Any]) -> None:
         return
     try:
         message = json.dumps(dict(payload), default=_safe_debug_default)
-    except Exception:
+    except (TypeError, ValueError):
         logging.getLogger(__name__).debug("Unable to serialize DOVI debug payload", exc_info=True)
         return
     print("[DOVI_DEBUG]", message, file=sys.stderr)
@@ -81,8 +81,8 @@ def _apply_cli_tonemap_overrides(color_cfg: Any, overrides: Mapping[str, Any]) -
     if updated:
         provided.update(updated)
         try:
-            setattr(color_cfg, "_provided_keys", provided)
-        except Exception:
+            color_cfg._provided_keys = provided
+        except (AttributeError, TypeError, ValueError):
             pass
 
 
@@ -121,7 +121,7 @@ def prepare_run_environment(request: RunRequest) -> RunEnvironment:
         _apply_cli_tonemap_overrides(color_cfg, tonemap_overrides)
     if debug_color:
         try:
-            setattr(cfg.color, "debug_color", True)
+            cfg.color.debug_color = True
         except AttributeError:
             pass
 

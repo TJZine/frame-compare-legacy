@@ -647,7 +647,7 @@ def _compare_clip_identities(
 ) -> Optional[str]:
     if len(expected) != len(observed):
         return "inputs_count_mismatch"
-    for exp, obs in zip(expected, observed):
+    for exp, obs in zip(expected, observed, strict=False):
         if obs.path != exp.path:
             return "inputs_path_mismatch"
         if obs.name != exp.name:

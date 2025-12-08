@@ -14,7 +14,7 @@ def normalise_compression_level(level: int) -> int:
 
     try:
         value = int(level)
-    except Exception:
+    except (ValueError, TypeError):
         return 1
     return max(0, min(2, value))
 

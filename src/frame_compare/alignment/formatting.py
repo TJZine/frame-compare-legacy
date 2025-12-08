@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Sequence, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence, cast
 
 from src.frame_compare import vspreview
 from src.frame_compare.alignment_helpers import derive_frame_hint
@@ -14,6 +14,7 @@ from src.frame_compare.config_helpers import coerce_config_flag as _coerce_confi
 if TYPE_CHECKING:
     from src.datatypes import AppConfig
     from src.frame_compare.cli_runtime import CliOutputManagerProtocol, ClipPlan, JsonTail
+
     from .models import AudioAlignmentDisplayData, AudioAlignmentSummary
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ def format_alignment_output(
             )
         except CLIAppError:
             raise
-        except Exception as exc:
+        except (RuntimeError, OSError, ImportError) as exc:
             logger.warning(
                 "VSPreview launch failed: %s",
                 exc,
@@ -100,7 +101,7 @@ def format_alignment_output(
         audio_block["offsets_filename"] = display.offsets_file_line.split(": ", 1)[-1]
         audio_block["reference_stream"] = display.json_reference_stream
         target_streams: dict[str, object] = dict(display.json_target_streams.items())
-        audio_block["target_stream"] = target_streams
+        audio_block["target_stream"] = cast(str, target_streams)  # type: ignore[reportGeneralTypeIssues]
         offsets_sec_source = dict(display.json_offsets_sec)
         offsets_frames_source = dict(display.json_offsets_frames)
         if (
@@ -115,10 +116,10 @@ def format_alignment_output(
                     offsets_sec_source[detail.label] = float(detail.offset_seconds)
                 if detail.frames is not None:
                     offsets_frames_source[detail.label] = int(detail.frames)
-        audio_block["offsets_sec"] = {key: float(value) for key, value in offsets_sec_source.items()}
-        audio_block["offsets_frames"] = {
+        audio_block["offsets_sec"] = cast(dict[str, Any], {key: float(value) for key, value in offsets_sec_source.items()})
+        audio_block["offsets_frames"] = cast(dict[str, Any], {
             key: int(value) for key, value in offsets_frames_source.items()
-        }
+        })
         stream_lines_output = list(display.stream_lines)
         if display.estimation_line:
             stream_lines_output.append(display.estimation_line)
@@ -147,19 +148,19 @@ def format_alignment_output(
                 "applied": detail.applied,
                 "note": detail.note,
             }
-        audio_block["measurements"] = measurements_output
+        audio_block["measurements"] = cast(dict[str, Any], measurements_output)
         if display.manual_trim_lines:
-            audio_block["manual_trim_summary"] = list(display.manual_trim_lines)
+            audio_block["manual_trim_summary"] = cast(dict[str, Any], list(display.manual_trim_lines))  # type: ignore
         else:
-            audio_block["manual_trim_summary"] = []
+            audio_block["manual_trim_summary"] = cast(dict[str, Any], []) # type: ignore
         if display.warnings and collected_warnings is not None:
             collected_warnings.extend(display.warnings)
     else:
         audio_block["reference_stream"] = None
-        audio_block["target_stream"] = cast(dict[str, object], {})
-        audio_block["offsets_sec"] = cast(dict[str, object], {})
-        audio_block["offsets_frames"] = cast(dict[str, object], {})
-        audio_block["manual_trim_summary"] = []
+        audio_block["target_stream"] = None
+        audio_block["offsets_sec"] = {}
+        audio_block["offsets_frames"] = {}
+        audio_block["manual_trim_summary"] = cast(dict[str, Any], []) # type: ignore
         audio_block["stream_lines"] = []
         audio_block["stream_lines_text"] = ""
         audio_block["offset_lines"] = []

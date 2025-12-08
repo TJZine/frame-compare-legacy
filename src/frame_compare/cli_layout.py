@@ -233,7 +233,7 @@ class _AnsiColorMapper:
             )
             colorama.init(strip=False, convert=convert)
             return
-        except Exception:  # pragma: no cover - optional dependency
+        except ImportError:
             pass
         try:  # pragma: no cover - platform dependent
             import ctypes
@@ -243,7 +243,7 @@ class _AnsiColorMapper:
             mode = ctypes.c_uint()
             if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
                 kernel32.SetConsoleMode(handle, mode.value | 0x0004)
-        except Exception:
+        except OSError:
             # If enabling VT mode fails we silently continue; the console will
             # simply ignore the escape codes.
             pass
@@ -1113,7 +1113,7 @@ class CliLayoutRenderer:
                 namespace,
                 allowed_call_names=("resolve", "abs", "min", "max"),
             )
-        except Exception:
+        except (ValueError, TypeError, SyntaxError):
             return None
 
     def _resolve_highlight_operand(self, operand: Any, context: LayoutContext) -> Any:
@@ -1709,7 +1709,7 @@ class CliLayoutRenderer:
         }
         try:
             result = self._safe_eval(prepared, namespace, allowed_call_names=("resolve",))
-        except Exception:
+        except (ValueError, TypeError, SyntaxError):
             return False
         return bool(result)
 
@@ -2121,7 +2121,7 @@ class CliLayoutRenderer:
         if max_cols <= 1:
             return list(lines)
         col_widths = [0] * max_cols
-        for indent, segments, _ in structured:
+        for _indent, segments, _ in structured:
             if not segments:
                 continue
             for idx, segment in enumerate(segments):

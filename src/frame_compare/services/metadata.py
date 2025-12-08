@@ -72,6 +72,8 @@ class AnalyzePicker(Protocol):
 class CliPromptProtocol(CliOutputManagerProtocol, Protocol):
     """Reporter interface subset used by the metadata service."""
 
+    def confirm(self, text: str, *, default: bool = True) -> bool: ...
+
 
 class TMDBClientProtocol(Protocol):
     """Protocol describing TMDB lookup behaviour."""

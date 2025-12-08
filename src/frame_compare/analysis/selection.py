@@ -61,13 +61,13 @@ def _resolve_collect_metrics_vapoursynth() -> MetricsCollector:
     try:
         from src.frame_compare import analysis as analysis_mod
 
-        func = getattr(analysis_mod, "_collect_metrics_vapoursynth")
-    except Exception:
+        func = analysis_mod._collect_metrics_vapoursynth
+    except (ImportError, AttributeError):
         try:
             from src import analysis as analysis_mod  # pragma: no cover - legacy fallback
 
-            func = getattr(analysis_mod, "_collect_metrics_vapoursynth")
-        except Exception:
+            func = analysis_mod._collect_metrics_vapoursynth
+        except (ImportError, AttributeError):
             func = metrics.collect_metrics_vapoursynth
     return func
 
@@ -76,13 +76,13 @@ def _resolve_generate_metrics_fallback() -> MetricsFallback:
     try:
         from src.frame_compare import analysis as analysis_mod
 
-        func = getattr(analysis_mod, "_generate_metrics_fallback")
-    except Exception:
+        func = analysis_mod._generate_metrics_fallback
+    except (ImportError, AttributeError):
         try:
             from src import analysis as analysis_mod  # pragma: no cover - legacy fallback
 
-            func = getattr(analysis_mod, "_generate_metrics_fallback")
-        except Exception:
+            func = analysis_mod._generate_metrics_fallback
+        except (ImportError, AttributeError):
             func = metrics.generate_metrics_fallback
     return func
 
@@ -473,7 +473,7 @@ def select_frames(
     if frame_window is not None:
         try:
             candidate_start, candidate_end = frame_window
-        except Exception:
+        except (ValueError, TypeError, IndexError):
             candidate_start, candidate_end = (0, num_frames)
         else:
             try:
@@ -712,7 +712,7 @@ def select_frames(
                     len(brightness),
                     len(motion),
                 )
-            except Exception as exc:
+            except (RuntimeError, ValueError) as exc:
                 logger.warning(
                     "[ANALYSIS] VapourSynth metrics collection failed (%s); "
                     "falling back to synthetic metrics",
@@ -923,7 +923,7 @@ def select_frames(
                 selection_categories=frame_categories,
                 selection_details=selection_details,
             )
-        except Exception:
+        except (OSError, TypeError, ValueError, RuntimeError):
             pass
 
     if return_metadata:

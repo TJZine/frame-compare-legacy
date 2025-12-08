@@ -15,8 +15,8 @@ from rich.console import Console as _Console  # noqa: F401
 from rich.progress import Progress as _Progress  # noqa: F401
 from rich.progress import ProgressColumn as _ProgressColumn
 
-import src.frame_compare.alignment_preview as _alignment_preview_module
 import src.frame_compare.alignment as _alignment_package
+import src.frame_compare.alignment_preview as _alignment_preview_module
 import src.frame_compare.doctor as _doctor_module
 import src.frame_compare.planner as _planner_module
 import src.frame_compare.preflight as _preflight_constants

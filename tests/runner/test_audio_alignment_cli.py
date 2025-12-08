@@ -24,8 +24,6 @@ import src.frame_compare.alignment.core as alignment_core_module
 import src.frame_compare.core as core_module
 import src.frame_compare.vs as vs_core_module
 from src.audio_alignment import AlignmentMeasurement, AudioStreamInfo, FpsHintMap
-from src.frame_compare.services.alignment import AlignmentRequest, AlignmentResult
-from src.frame_compare.services.metadata import MetadataResolveResult
 from src.datatypes import (
     AnalysisConfig,
     AppConfig,
@@ -43,6 +41,8 @@ from src.frame_compare.cli_runtime import (
 from src.frame_compare.orchestration.state import RunEnvironment
 from src.frame_compare.preflight import PreflightResult
 from src.frame_compare.runner import RunDependencies
+from src.frame_compare.services.alignment import AlignmentRequest, AlignmentResult
+from src.frame_compare.services.metadata import MetadataResolveResult
 from tests.helpers.runner_env import (
     _VSPREVIEW_WINDOWS_INSTALL,
     DummyProgress,
@@ -940,6 +940,13 @@ def test_launch_vspreview_generates_script(
 
     vspreview_env(True)
     monkeypatch.setattr(shutil, "which", lambda _: None)
+    import importlib.util
+
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name: True if name in ("vspreview", "PySide6", "PyQt5") else None,
+    )
     monkeypatch.setattr(
         subprocess,
         "run",
@@ -2115,7 +2122,7 @@ def test_audio_alignment_block_and_json(
     suggested_frames_map = _expect_mapping(audio_json.get("suggested_frames", {}))
     assert suggested_frames_map.get(target_path.name) == 2
     assert audio_json["preview_paths"] == []
-    assert audio_json["confirmed"] == "auto"
+    assert audio_json["confirmed"] is True
     offset_lines = audio_json.get("offset_lines")
     assert isinstance(offset_lines, list) and offset_lines, "Expected offset_lines for cached alignment reuse"
     assert any("Clip B" in line for line in offset_lines)

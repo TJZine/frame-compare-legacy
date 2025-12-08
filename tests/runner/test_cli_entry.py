@@ -594,7 +594,7 @@ def test_validate_tonemap_overrides_rejects_bad_percentile() -> None:
 def test_cli_tonemap_overrides_mark_provided_keys() -> None:
     cfg = ColorConfig()
     cfg.preset = "contrast"
-    setattr(cfg, "_provided_keys", {"preset"})
+    cfg._provided_keys = {"preset"}
 
     import src.frame_compare.orchestration.setup as setup_module
     setup_module._apply_cli_tonemap_overrides(cfg, {"target_nits": 150.0})

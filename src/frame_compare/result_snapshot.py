@@ -82,7 +82,7 @@ def _coerce_str_list(raw_items: Sequence[Any] | None) -> list[str]:
     for item in raw_items:
         try:
             coerced.append(str(item))
-        except Exception:  # pragma: no cover - extremely rare edge cases
+        except (ValueError, TypeError):  # pragma: no cover - extremely rare edge cases
             continue
     return coerced
 

@@ -32,7 +32,7 @@ else:  # pragma: no cover - optional dependency in tests
 
 try:
     from requests_toolbelt import MultipartEncoder as _RuntimeMultipartEncoder  # type: ignore[reportMissingImports]
-except Exception:  # pragma: no cover - import guard
+except ImportError:
     _RuntimeMultipartEncoder = None
 
 MultipartEncoder: Optional[type[_MultipartEncoderType]] = _RuntimeMultipartEncoder
@@ -40,6 +40,10 @@ MultipartEncoder: Optional[type[_MultipartEncoderType]] = _RuntimeMultipartEncod
 
 class SlowpicsAPIError(RuntimeError):
     """Raised when slow.pics API interactions fail."""
+
+    def __init__(self, message: str, status_code: Optional[int] = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 logger = logging.getLogger(__name__)
@@ -63,7 +67,7 @@ class _SessionPool:
                 session = session_factory()
                 self._sessions.append(session)
                 self._queue.put(session)
-        except Exception:
+        except Exception:  # noqa: BLE001
             self.close()
             raise
 
@@ -84,7 +88,7 @@ class _SessionPool:
             session = self._sessions.pop()
             try:
                 session.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.debug("Failed to close slow.pics session cleanly", exc_info=True)
 
 
@@ -92,17 +96,18 @@ def _raise_for_status(response: requests.Response, context: str) -> None:
     if response.status_code >= 400:
         try:
             detail = response.json()
-        except Exception:
+        except ValueError:
             detail = response.text
-        error = SlowpicsAPIError(f"{context} failed ({response.status_code}): {detail}")
-        setattr(error, "status_code", response.status_code)
-        raise error
+        raise SlowpicsAPIError(
+            f"{context} failed ({response.status_code}): {detail}",
+            status_code=response.status_code,
+        )
 
 
 def _redact_webhook(url: str) -> str:
     try:
         parsed = urlsplit(url)
-    except Exception:
+    except ValueError:
         return "webhook"
     if parsed.netloc:
         return parsed.netloc
@@ -339,10 +344,10 @@ def _upload_comparison_legacy(
         raise SlowpicsAPIError("Unexpected slow.pics response structure for comparisons")
 
     jobs: List[tuple[Path, str]] = []
-    for per_frame_paths, image_ids in zip(upload_plan, image_groups):
+    for per_frame_paths, image_ids in zip(upload_plan, image_groups, strict=False):
         if len(image_ids) != len(per_frame_paths):
             raise SlowpicsAPIError("Slow.pics returned mismatched image identifiers")
-        jobs.extend(zip(per_frame_paths, image_ids))
+        jobs.extend(zip(per_frame_paths, image_ids, strict=False))
 
     worker_count = max_workers if max_workers is not None else _DEFAULT_UPLOAD_CONCURRENCY
     worker_count = max(1, min(worker_count, len(jobs) or 1))
@@ -386,7 +391,7 @@ def _upload_comparison_legacy(
                 try:
                     for future in as_completed(futures):
                         future.result()
-                except Exception:
+                except Exception:  # noqa: BLE001
                     for future in futures:
                         future.cancel()
                     raise

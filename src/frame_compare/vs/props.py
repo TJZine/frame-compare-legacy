@@ -123,7 +123,7 @@ def _describe_code(value: Optional[int], mapping: Mapping[int, str], default: st
         return default
     try:
         return mapping[int(value)]
-    except Exception:
+    except (ValueError, TypeError, KeyError):
         return str(value)
 
 
@@ -141,7 +141,7 @@ def _call_set_frame_prop(set_prop: Any, clip: Any, **kwargs: Any) -> Any:
         try:
             return set_prop(**kwargs)
         except TypeError:
-            raise exc_first
+            raise exc_first from None
 
 
 def _normalise_property_value(value: Any) -> Any:
@@ -176,7 +176,7 @@ def _extract_frame_props(clip: Any) -> Mapping[str, Any]:
 def _snapshot_frame_props(clip: Any) -> Mapping[str, Any]:
     try:
         frame = clip.get_frame(0)
-    except Exception:
+    except (RuntimeError, ValueError, KeyError):
         return dict(_extract_frame_props(clip))
     props = getattr(frame, "props", None)
     if props is None:
@@ -297,7 +297,7 @@ def _apply_frame_props_dict(clip: Any, props: Mapping[str, Any]) -> Any:
         return clip
     try:
         return _call_set_frame_prop(set_props, clip, **props)
-    except Exception:  # pragma: no cover - best effort
+    except (TypeError, ValueError, RuntimeError):
         return clip
 
 __all__ = [

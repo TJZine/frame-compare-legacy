@@ -21,9 +21,10 @@ from typing import (
 )
 
 import click
+
 from src import audio_alignment
 from src.datatypes import AppConfig
-from src.frame_compare.cli_runtime import CLIAppError, ClipPlan, CliOutputManagerProtocol
+from src.frame_compare.cli_runtime import CLIAppError, CliOutputManagerProtocol, ClipPlan
 from src.frame_compare.config_helpers import coerce_config_flag as _coerce_config_flag
 from src.frame_compare.layout_utils import plan_label as _plan_label
 from src.frame_compare.metadata import match_override as _match_override

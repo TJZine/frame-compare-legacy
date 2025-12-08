@@ -51,7 +51,7 @@ from src.frame_compare.diagnostics import (
     extract_hdr_metadata,
 )
 from src.frame_compare.layout_utils import plan_label as _plan_label
-from src.frame_compare.orchestration import reporting, setup
+from src.frame_compare.orchestration import reporting
 from src.frame_compare.orchestration.setup import emit_dovi_debug
 from src.frame_compare.orchestration.state import (
     RunContext,
@@ -77,14 +77,18 @@ from src.frame_compare.services.factory import (
     build_report_publisher,
     build_slowpics_publisher,
 )
-from src.frame_compare.services.metadata import MetadataResolver, MetadataResolveRequest
+from src.frame_compare.services.metadata import (
+    CliPromptProtocol,
+    MetadataResolver,
+    MetadataResolveRequest,
+)
 from src.frame_compare.services.publishers import (
     ReportPublisher,
     ReportPublisherRequest,
     SlowpicsPublisher,
     SlowpicsPublisherRequest,
 )
-from src.frame_compare.services.setup import DefaultSetupService, SetupService
+from src.frame_compare.services.setup import DefaultSetupService
 from src.frame_compare.vs import ClipInitError, ClipProcessError
 from src.screenshot import ScreenshotError, generate_screenshots
 
@@ -324,7 +328,7 @@ class WorkflowCoordinator:
             cfg=cfg,
             root=root,
             files=files,
-            reporter=reporter,
+            reporter=cast("CliPromptProtocol", reporter),
             json_tail=json_tail,
             layout_data=layout_data,
             collected_warnings=collected_warnings,
@@ -353,7 +357,7 @@ class WorkflowCoordinator:
             root=root,
             analyze_path=context.analyze_path,
             audio_track_overrides=audio_track_override_map,
-            reporter=reporter,
+            reporter=cast("CliPromptProtocol", reporter),
             json_tail=json_tail,
             vspreview_mode=vspreview_mode_value,
             collected_warnings=collected_warnings,
@@ -476,7 +480,7 @@ class WorkflowCoordinator:
         }
         layout_data["window"] = json_tail["window"]
 
-        for plan, spec in zip(plans, selection_specs):
+        for plan, spec in zip(plans, selection_specs, strict=False):
             if not spec.warnings:
                 continue
             label = plan.metadata.get("label") or plan.path.name
@@ -753,7 +757,7 @@ class WorkflowCoordinator:
             confirmation_value = alignment_display.confirmation
             if confirmation_value is None and alignment_summary is not None:
                 confirmation_value = "auto"
-            json_tail["audio_alignment"]["confirmed"] = confirmation_value
+            json_tail["audio_alignment"]["confirmed"] = bool(confirmation_value)
         audio_alignment_view = copy.deepcopy(json_tail["audio_alignment"])
         audio_alignment_layout = cast(dict[str, object], audio_alignment_view)
         offsets_sec_map_obj = coerce_str_mapping(audio_alignment_layout.get("offsets_sec"))

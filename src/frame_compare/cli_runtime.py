@@ -175,29 +175,29 @@ class SlowpicsJSON(TypedDict):
 
 class AudioAlignmentJSON(TypedDict, total=False):
     enabled: bool
-    reference_stream: Optional[str]
-    target_stream: dict[str, object]
-    offsets_sec: dict[str, object]
-    offsets_frames: dict[str, object]
-    measurements: dict[str, dict[str, object]]
+    offsets_filename: str | None
+    offsets_sec: dict[str, Any]
+    offsets_frames: dict[str, Any]
+    suggestion_mode: bool
+    vspreview_mode: str
+    vspreview_script: str | None
+    vspreview_invoked: bool
+    vspreview_exit_code: int | None
+    manual_trim_starts: dict[str, int]
+    vspreview_manual_offsets: dict[str, int]
+    vspreview_manual_deltas: dict[str, int]
+    vspreview_reference_trim: int
+    preview_paths: list[str]
+    confirmed: bool
+    suggested_frames: dict[str, int]
+    reference_stream: str | None
+    target_stream: str | None
     stream_lines: list[str]
     stream_lines_text: str
     offset_lines: list[str]
     offset_lines_text: str
-    preview_paths: list[str]
-    confirmed: bool | str | None
-    offsets_filename: str
-    use_vspreview: bool
-    vspreview_manual_offsets: dict[str, object]
-    vspreview_manual_deltas: dict[str, object]
-    vspreview_reference_trim: Optional[int]
-    manual_trim_summary: list[str]
-    suggestion_mode: bool
-    suggested_frames: dict[str, int]
-    manual_trim_starts: dict[str, int]
-    vspreview_script: Optional[str]
-    vspreview_invoked: bool
-    vspreview_exit_code: Optional[int]
+    measurements: dict[str, Any]
+    manual_trim_summary: dict[str, Any]
 
 
 class TrimClipEntry(TypedDict):
@@ -360,31 +360,31 @@ class CliOutputManagerProtocol(Protocol):
     flags: Dict[str, Any]
     values: Dict[str, Any]
 
-    def set_flag(self, key: str, value: Any) -> None: ...
-
-    def update_values(self, mapping: Mapping[str, Any]) -> None: ...
+    def line(self, text: str) -> None: ...
 
     def warn(self, text: str) -> None: ...
 
-    def get_warnings(self) -> List[str]: ...
+    def error(self, text: str) -> None: ...
 
-    def render_sections(self, section_ids: Iterable[str]) -> None: ...
-
-    def create_progress(self, progress_id: str, *, transient: bool = False) -> Progress: ...
-
-    def update_progress_state(self, progress_id: str, **state: Any) -> None: ...
+    def verbose_line(self, text: str) -> None: ...
 
     def banner(self, text: str) -> None: ...
 
     def section(self, title: str) -> None: ...
 
-    def line(self, text: str) -> None: ...
+    def set_flag(self, key: str, value: Any) -> None: ...
 
-    def verbose_line(self, text: str) -> None: ...
+    def update_values(self, mapping: Mapping[str, Any]) -> None: ...
 
-    def progress(self, *columns: ProgressColumn, transient: bool = False) -> Progress: ...
+    def render_sections(self, section_ids: Iterable[str]) -> None: ...
+
+    def get_warnings(self) -> List[str]: ...
 
     def iter_warnings(self) -> List[str]: ...
+
+    def create_progress(self, progress_id: str, *, transient: bool = False) -> Progress: ...
+
+    def update_progress_state(self, progress_id: str, **state: Any) -> None: ...
 
 
 class CliOutputManager:
@@ -435,6 +435,11 @@ class CliOutputManager:
 
     def warn(self, text: str) -> None:
         self._warnings.append(text)
+
+    def error(self, text: str) -> None:
+        """Display an error message."""
+        if not self.quiet:
+            self.console.print(f"[bold red]Error:[/bold red] {escape(text)}")
 
     def get_warnings(self) -> List[str]:
         return list(self._warnings)
@@ -528,6 +533,10 @@ class NullCliOutputManager(CliOutputManagerProtocol):
 
     def warn(self, text: str) -> None:
         self._warnings.append(text)
+
+    def error(self, text: str) -> None:
+        """Discard error output."""
+        pass
 
     def get_warnings(self) -> List[str]:
         return list(self._warnings)

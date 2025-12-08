@@ -59,6 +59,9 @@ class RecordingReporter(CliOutputManagerProtocol):
     def warn(self, text: str) -> None:  # pragma: no cover - unused
         self._warnings.append(text)
 
+    def error(self, text: str) -> None:  # pragma: no cover - unused
+        self._warnings.append(f"ERROR: {text}")
+
     def iter_warnings(self) -> list[str]:  # pragma: no cover - unused
         return list(self._warnings)
 

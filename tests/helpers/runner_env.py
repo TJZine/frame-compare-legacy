@@ -7,16 +7,16 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import util as importlib_util
 from pathlib import Path
-from typing import Any, Callable, Dict, Final, cast
+from typing import Any, Callable, Dict, Final, Optional, cast
 
 import pytest
 from rich.console import Console
 
 import frame_compare
 import src.audio_alignment as audio_alignment_module
-import src.frame_compare.alignment_preview as alignment_preview_module
 import src.frame_compare.alignment as alignment_package
 import src.frame_compare.alignment.core as alignment_runner_module
+import src.frame_compare.alignment_preview as alignment_preview_module
 import src.frame_compare.cache as cache_module
 import src.frame_compare.config_helpers as config_helpers_module
 import src.frame_compare.core as core_module
@@ -57,7 +57,6 @@ from src.frame_compare.orchestration import coordinator as coordinator_module
 from src.frame_compare.orchestration import reporting as reporting_module
 from src.frame_compare.orchestration import setup as setup_module
 from src.frame_compare.orchestration.state import RunEnvironment, RunRequest
-from src.frame_compare.services.setup import SetupService
 
 __all__ = [
     "_CliRunnerEnv",
@@ -332,24 +331,29 @@ def _make_json_tail_stub() -> JsonTail:
 
     audio_block: AudioAlignmentJSON = {
         "enabled": False,
-        "reference_stream": None,
-        "target_stream": {},
+        "offsets_filename": "offsets.toml",
         "offsets_sec": {},
         "offsets_frames": {},
-        "preview_paths": [],
-        "confirmed": None,
-        "offsets_filename": "offsets.toml",
-        "manual_trim_summary": [],
         "suggestion_mode": True,
-        "suggested_frames": {},
-        "manual_trim_starts": {},
-        "use_vspreview": False,
-        "vspreview_manual_offsets": {},
-        "vspreview_manual_deltas": {},
-        "vspreview_reference_trim": None,
+        "vspreview_mode": "baseline",
         "vspreview_script": None,
         "vspreview_invoked": False,
         "vspreview_exit_code": None,
+        "manual_trim_starts": {},
+        "vspreview_manual_offsets": {},
+        "vspreview_manual_deltas": {},
+        "vspreview_reference_trim": 0,
+        "preview_paths": [],
+        "confirmed": False,
+        "suggested_frames": {},
+        "reference_stream": None,
+        "target_stream": None,
+        "stream_lines": [],
+        "stream_lines_text": "",
+        "offset_lines": [],
+        "offset_lines_text": "",
+        "measurements": {},
+        "manual_trim_summary": {},
     }
     tail: JsonTail = {
         "clips": [],
@@ -523,11 +527,16 @@ class _RecordingOutputManager(CliOutputManager):
         )
         self.lines: list[str] = []
 
-    def line(self, text: str) -> None:
+    def line(self, text: str = "", *, style: Optional[str] = None) -> None:
         """Record the rendered line while still delegating to the base implementation."""
 
         self.lines.append(text)
         super().line(text)
+
+    def error(self, text: str) -> None:
+        """Record error output."""
+        self.lines.append(f"ERROR: {text}")
+        super().error(text)
 
 
 class DummyProgress:

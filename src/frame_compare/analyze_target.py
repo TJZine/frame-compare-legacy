@@ -18,7 +18,7 @@ def _estimate_analysis_time(file: Path, cache_dir: Path | None) -> float:
     """Estimate the time to read two windows of frames via VapourSynth."""
     try:
         clip = vs_core.init_clip(str(file), cache_dir=str(cache_dir) if cache_dir else None)
-    except Exception:
+    except (RuntimeError, ValueError, OSError, TypeError):
         return float("inf")
 
     try:
@@ -43,7 +43,7 @@ def _estimate_analysis_time(file: Path, cache_dir: Path | None) -> float:
         t1 = _read_window(total // 3)
         t2 = _read_window((2 * total) // 3)
         return (t1 + t2) / 2.0
-    except Exception:
+    except (RuntimeError, ValueError, ZeroDivisionError, AttributeError):
         return float("inf")
 
 

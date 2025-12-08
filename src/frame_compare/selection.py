@@ -486,7 +486,7 @@ def log_selection_windows(
             log_fn = logger.warning if warning else logger.info
             log_fn(plain)
 
-    for plan, spec in zip(plans, specs):
+    for plan, spec in zip(plans, specs, strict=False):
         raw_label = plan.metadata.get("label") or plan.path.name
         label_plain = (raw_label or plan.path.name).strip()
         label_markup = escape(label_plain)

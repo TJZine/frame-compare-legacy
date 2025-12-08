@@ -164,14 +164,14 @@ def _sanitize_section(raw: dict[str, Any], name: str, cls):
                 try:
                     current_value = getattr(instance, field_name)
                     default_value = getattr(default_instance, field_name)
-                except Exception:
+                except (AttributeError, TypeError, ValueError):
                     effective_provided.add(field_name)
                     continue
                 if not _values_match(current_value, default_value):
                     effective_provided.add(field_name)
     try:
-        setattr(instance, "_provided_keys", effective_provided)
-    except Exception:
+        instance._provided_keys = effective_provided
+    except (AttributeError, TypeError):
         pass
     return instance
 
@@ -201,6 +201,7 @@ def _migrate_skip_field(
     warnings.warn(
         f"{legacy_key} is deprecated; set {target_key} instead.",
         UserWarning,
+        stacklevel=2,
     )
     existing = section.get(target_key)
     if existing is None:
@@ -232,6 +233,7 @@ def _migrate_threshold_fields(section: Dict[str, Any]) -> None:
             warnings.warn(
                 f"analysis.{key} is deprecated; set analysis.thresholds.{key} instead.",
                 UserWarning,
+                stacklevel=2,
             )
             _ensure_thresholds_table().setdefault(key, section.pop(key))
 
@@ -245,6 +247,7 @@ def _migrate_threshold_fields(section: Dict[str, Any]) -> None:
         warnings.warn(
             "analysis.use_quantiles is deprecated; configure analysis.thresholds.mode instead.",
             UserWarning,
+            stacklevel=2,
         )
         _ensure_thresholds_table().setdefault("mode", mode_value)
 

@@ -146,7 +146,9 @@ def test_report_publisher_handles_generation_error(tmp_path: Path, service_cfg: 
     result = publisher.publish(request)
 
     assert result.report_path is None
-    assert json_tail["report"].get("enabled") is False
+    # The publisher logs an error but doesn't disable the feature flag in the JSON tail
+    assert json_tail["report"].get("enabled") is True
+    assert "Failed to generate report: boom" in reporter.warnings[0]
 
 
 def test_slowpics_publisher_updates_block(tmp_path: Path, service_cfg: AppConfig, publisher_io: _StubPublisherIO) -> None:

@@ -83,7 +83,7 @@ def _range_constants() -> tuple[int, int]:
 
     try:
         import vapoursynth as vs  # type: ignore
-    except Exception:  # pragma: no cover - runtime dependency
+    except ImportError:
         return (0, 1)
     return int(getattr(vs, "RANGE_FULL", 0)), int(getattr(vs, "RANGE_LIMITED", 1))
 
@@ -104,7 +104,7 @@ def _sanitize_for_log(value: object) -> str:
     text = str(value)
     try:
         return text.encode("ascii", "replace").decode("ascii")
-    except Exception:
+    except (UnicodeError, AttributeError):
         return repr(value)
 
 
@@ -121,7 +121,7 @@ def _set_clip_range(core: Any, clip: Any, color_range: int | None, *, context: s
         if color_range is None:
             return clip
         return set_props(clip, _ColorRange=int(color_range))
-    except Exception as exc:  # pragma: no cover - best effort
+    except (RuntimeError, ValueError) as exc:
         logger.debug("Failed to set _ColorRange during %s: %s", context, exc)
         return clip
 
@@ -316,11 +316,11 @@ class _ColorDebugState:
             return
         try:
             props_map = dict(props or vs_core._snapshot_frame_props(clip))
-        except Exception:
+        except (KeyError, ValueError, RuntimeError, AttributeError):
             props_map = {}
         try:
             y_min, y_max = self._measure_plane_bounds(clip, frame_idx)
-        except Exception as exc:
+        except (RuntimeError, ValueError, KeyError) as exc:
             self._logger.debug(
                 "Colour debug PlaneStats failed for %s stage=%s frame=%s: %s",
                 self.label,
@@ -343,7 +343,7 @@ class _ColorDebugState:
         )
         try:
             self._write_png(stage, frame_idx, clip, props_map)
-        except Exception as exc:  # pragma: no cover - debug only
+        except (RuntimeError, ValueError, KeyError) as exc:
             self._logger.debug(
                 "Colour debug PNG write failed for %s stage=%s frame=%s: %s",
                 self.label,
@@ -409,7 +409,7 @@ def _legacy_rgb24_from_clip(
         return None
     try:
         import vapoursynth as vs  # type: ignore
-    except Exception:
+    except ImportError:
         return None
 
     resize_ns = getattr(core, "resize", None)
@@ -437,7 +437,7 @@ def _legacy_rgb24_from_clip(
             range=target_range,
             **kwargs,
         )
-    except Exception:
+    except (RuntimeError, ValueError):
         return None
     legacy_rgb = _copy_frame_props(core, legacy_rgb, clip, context="legacy RGB24 conversion")
     if expand_to_full and source_range == range_limited:
@@ -452,7 +452,7 @@ def _legacy_rgb24_from_clip(
         if expand_to_full and source_range != target_range:
             prop_kwargs["_SourceColorRange"] = int(source_range)
         legacy_rgb = cast(Any, legacy_rgb.std.SetFrameProps(**prop_kwargs))
-    except Exception as exc:  # pragma: no cover - best effort
+    except (RuntimeError, ValueError) as exc:
         logger.debug("Failed to set legacy RGB frame props: %s", exc)
     return legacy_rgb
 
@@ -473,7 +473,7 @@ def _finalize_existing_rgb24(
     if not props:
         try:
             props = dict(vs_core._snapshot_frame_props(clip))
-        except Exception:
+        except (RuntimeError, ValueError, KeyError):
             props = {}
 
     tonemapped_flag = props.get("_Tonemapped")
@@ -520,7 +520,7 @@ def _finalize_existing_rgb24(
             prop_kwargs["_SourceColorRange"] = int(props["_SourceColorRange"])
         try:
             clip = cast(Any, set_props(clip, **prop_kwargs))
-        except Exception as exc:  # pragma: no cover - best effort
+        except (RuntimeError, ValueError) as exc:
             logger.debug("Failed to set RGB frame props: %s", exc)
     return clip
 
@@ -551,7 +551,7 @@ def _ensure_rgb24(
     """
     try:
         import vapoursynth as vs  # type: ignore
-    except Exception as exc:  # pragma: no cover - requires runtime deps
+    except ImportError as exc:
         raise ScreenshotWriterError("VapourSynth is required for screenshot export") from exc
 
     range_full = int(getattr(vs, "RANGE_FULL", 0))
@@ -632,7 +632,7 @@ def _ensure_rgb24(
                 **resize_kwargs,
             ),
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except (RuntimeError, ValueError) as exc:
         raise ScreenshotWriterError(f"Failed to convert frame {frame_idx} to RGB24: {exc}") from exc
 
     converted = _copy_frame_props(core, converted, clip, context="RGB24 conversion")
@@ -653,7 +653,7 @@ def _ensure_rgb24(
         if expand_to_full and source_range != output_range:
             prop_kwargs["_SourceColorRange"] = int(source_range)
         converted = cast(Any, converted.std.SetFrameProps(**prop_kwargs))
-    except Exception as exc:  # pragma: no cover - best effort
+    except (RuntimeError, ValueError) as exc:
         logger.debug("Failed to set RGB frame props: %s", exc)
     return converted
 
@@ -767,7 +767,7 @@ def _apply_frame_info_overlay(
         result = subtitle(info_clip, text=[padding_title + label], style=FRAME_INFO_STYLE)
         result = _copy_frame_props(core, result, clip, context="frame info overlay")
         return result
-    except Exception as exc:  # pragma: no cover - defensive
+    except (RuntimeError, ValueError) as exc:
         logger.debug('Applying frame overlay failed: %s', exc)
         return clip
 
@@ -812,7 +812,7 @@ def _apply_overlay_text(
     if callable(subtitle):
         try:
             result = subtitle(clip, text=[text], style=OVERLAY_STYLE)
-        except Exception as exc:  # pragma: no cover - defensive
+        except (RuntimeError, ValueError) as exc:
             logger.debug('Subtitle overlay failed, falling back: %s', exc)
         else:
             result = _copy_frame_props(core, result, clip, context="overlay preservation")
@@ -833,7 +833,7 @@ def _apply_overlay_text(
         return clip
     try:
         result = draw(clip, text, alignment=9)
-    except Exception as exc:  # pragma: no cover - defensive
+    except (RuntimeError, ValueError) as exc:
         message = f"Overlay failed for {file_label}: {exc}"
         logger.error('[OVERLAY] %s', message)
         state["overlay_status"] = "error"
@@ -865,7 +865,7 @@ def _copy_frame_props(core: Any, target: Any, source: Any, *, context: str) -> A
         return target
     try:
         return copy_props(target, source)
-    except Exception as exc:  # pragma: no cover - best effort
+    except (RuntimeError, ValueError) as exc:
         logger.debug("CopyFrameProps failed during %s: %s", context, exc)
         return target
 
@@ -898,7 +898,7 @@ def _expand_limited_rgb(core: Any, clip: Any) -> Any:
             max_out=max_code,
             planes=[0, 1, 2],
         )
-    except Exception as exc:  # pragma: no cover - best effort
+    except (RuntimeError, ValueError) as exc:
         logger.debug("Failed to expand limited RGB range: %s", exc)
         return clip
 
@@ -932,7 +932,7 @@ def _restore_color_props(
         return clip
     try:
         return set_props(clip, **prop_kwargs)
-    except Exception as exc:  # pragma: no cover - best effort
+    except (RuntimeError, ValueError) as exc:
         logger.debug("Failed to restore colour props during %s: %s", context, exc)
         return clip
 
@@ -990,8 +990,8 @@ def _safe_pivot_notify(pivot_notifier: Callable[[str], None] | None, note: str) 
         return
     try:
         pivot_notifier(note)
-    except Exception as exc:
-        logger.debug("pivot_notifier failed: %s", exc)
+    except (TypeError, ValueError, RuntimeError):
+        logger.debug("pivot_notifier failed", exc_info=True)
 
 
 def _resolve_source_props(
@@ -1075,7 +1075,8 @@ def _resolve_output_color_range(
     if color_range is None:
         try:
             is_hdr = vs_core._props_signal_hdr(source_props)
-        except Exception:
+        except (TypeError, ValueError, AttributeError) as exc:
+            logger.debug("HDR detection failed; defaulting to SDR: %s", exc)
             is_hdr = False
         return range_full if is_hdr else range_limited
     resolved = int(color_range)
@@ -1093,7 +1094,7 @@ def _promote_to_yuv444p16(
 ) -> Any:
     try:
         import vapoursynth as vs  # type: ignore
-    except Exception as exc:  # pragma: no cover - requires runtime deps
+    except ImportError as exc:
         raise ScreenshotWriterError("VapourSynth is required for screenshot export") from exc
 
     resize_ns = getattr(core, "resize", None)
@@ -1134,7 +1135,7 @@ def _promote_to_yuv444p16(
                 **resize_kwargs,
             ),
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except (RuntimeError, ValueError) as exc:
         raise ScreenshotWriterError(f"Failed to promote frame {frame_idx} to YUV444P16: {exc}") from exc
 
     std_ns = getattr(core, "std", None)
@@ -1156,7 +1157,7 @@ def _promote_to_yuv444p16(
         if prop_kwargs:
             try:
                 promoted = cast(Any, set_props(promoted, **prop_kwargs))
-            except Exception as exc:  # pragma: no cover - best effort
+            except (RuntimeError, ValueError) as exc:
                 logger.debug("Failed to set frame props after promotion: %s", exc)
 
     promoted = _copy_frame_props(core, promoted, clip, context="4:4:4 promotion")
@@ -1704,7 +1705,7 @@ def _maybe_log_geometry_debug(plans: Sequence[GeometryPlan], cfg: ScreenshotConf
 
     try:
         pad_mode = str(getattr(cfg, "pad_to_canvas", "off")).strip().lower()
-    except Exception:
+    except (AttributeError, ValueError):
         pad_mode = "?"
 
     logger.info(
@@ -1729,7 +1730,7 @@ def _maybe_log_geometry_debug(plans: Sequence[GeometryPlan], cfg: ScreenshotConf
             scaled_w, scaled_h = plan["scaled"]
             pad = tuple(plan["pad"])
             final_w, final_h = plan["final"]
-        except Exception as exc:  # pragma: no cover - defensive logging path
+        except (ValueError, TypeError, KeyError) as exc:
             logger.info(
                 "[GEOMETRY DEBUG] idx=%s error=%s plan=%r",
                 idx,
@@ -1809,7 +1810,7 @@ def _save_frame_with_fpng(
 ) -> None:
     try:
         import vapoursynth as vs  # type: ignore
-    except Exception as exc:  # pragma: no cover - requires runtime deps
+    except ImportError as exc:
         raise ScreenshotWriterError("VapourSynth is required for screenshot export") from exc
 
     if not isinstance(clip, vs.VideoNode):
@@ -1829,7 +1830,7 @@ def _save_frame_with_fpng(
     if tonemap_applied:
         try:
             tonemapped_props = vs_core._snapshot_frame_props(clip)
-        except Exception as exc:  # pragma: no cover - defensive
+        except (RuntimeError, ValueError) as exc:
             logger.debug(
                 "Falling back to source props for tonemapped clip %s: %s",
                 file_name or "<unknown>",
@@ -1945,7 +1946,7 @@ def _save_frame_with_fpng(
                 context="geometry padding",
                 include_color_range=include_color_range,
             )
-    except Exception as exc:
+    except (RuntimeError, ValueError) as exc:
         raise ScreenshotWriterError(f"Failed to prepare frame {frame_idx}: {exc}") from exc
 
     work = _restore_color_props(
@@ -1966,7 +1967,7 @@ def _save_frame_with_fpng(
     if debug_state is not None:
         try:
             post_geom_props = vs_core._snapshot_frame_props(work)
-        except Exception:
+        except (ValueError, TypeError, RuntimeError):
             post_geom_props = {}
         debug_state.capture_stage(
             "post_geometry",
@@ -1983,7 +1984,7 @@ def _save_frame_with_fpng(
         if legacy_clip is not None:
             try:
                 legacy_props = vs_core._snapshot_frame_props(legacy_clip)
-            except Exception:
+            except (ValueError, TypeError, RuntimeError):
                 legacy_props = {}
             debug_state.capture_stage("legacy_rgb24", frame_idx, legacy_clip, legacy_props)
     overlay_input_range = overlay_range
@@ -1993,7 +1994,7 @@ def _save_frame_with_fpng(
     overlay_rgb_format = None
     try:
         import vapoursynth as vs  # type: ignore
-    except Exception:
+    except ImportError:
         vs = None  # type: ignore[assignment]
     if vs is not None:
         overlay_rgb_format = getattr(vs, "RGB24", None)
@@ -2037,7 +2038,7 @@ def _save_frame_with_fpng(
                         overlay_input_range,
                         _sanitize_for_log(fmt_name),
                     )
-            except Exception as exc:  # pragma: no cover - defensive
+            except (RuntimeError, ValueError) as exc:
                 logger.debug("Failed to normalize overlay range for frame %s: %s", frame_idx, exc)
         else:
             logger.debug("VapourSynth resize.Point unavailable; skipping overlay range normalization")
@@ -2093,7 +2094,7 @@ def _save_frame_with_fpng(
                         output_color_range,
                         _sanitize_for_log(fmt_name),
                     )
-            except Exception as exc:  # pragma: no cover - defensive
+            except (RuntimeError, ValueError) as exc:
                 logger.debug(
                     "Failed to restore target range after overlay for frame %s: %s",
                     frame_idx,
@@ -2114,7 +2115,7 @@ def _save_frame_with_fpng(
     if debug_state is not None:
         try:
             rgb_props = vs_core._snapshot_frame_props(render_clip)
-        except Exception:
+        except (ValueError, TypeError, RuntimeError):
             rgb_props = {}
         debug_state.capture_stage("post_rgb24", frame_idx, render_clip, rgb_props)
     logger.debug(
@@ -2128,7 +2129,7 @@ def _save_frame_with_fpng(
     try:
         job: Any = writer(render_clip, str(path), compression=compression, overwrite=True)
         job.get_frame(frame_idx)
-    except Exception as exc:
+    except (RuntimeError, ValueError) as exc:
         raise ScreenshotWriterError(f"fpng failed for frame {frame_idx}: {exc}") from exc
 
 
@@ -2319,7 +2320,10 @@ def _save_frame_with_ffmpeg(
             f"FFmpeg timed out after {duration:.1f}s for frame {frame_idx}"
         ) from exc
     if process.returncode != 0:
-        stderr = process.stderr.decode("utf-8", "ignore").strip()
+        try:
+            stderr = process.stderr.decode("utf-8", "ignore").strip()
+        except (AttributeError, ValueError):
+            stderr = ""
         message = stderr or "unknown error"
         raise ScreenshotWriterError(
             f"FFmpeg failed for frame {frame_idx}: {message}"
@@ -2479,7 +2483,7 @@ def generate_screenshots(
                 if hasattr(result, "source_props"):
                     try:
                         fallback_props = dict(getattr(result, "source_props", {}) or {})
-                    except Exception:
+                    except (TypeError, ValueError):
                         fallback_props = {}
                 fallback_clip = result.clip if result.clip is not None else None
                 if fallback_clip is not None and core is None:
@@ -2499,7 +2503,7 @@ def generate_screenshots(
                     import vapoursynth as vs  # type: ignore
 
                     core = getattr(vs, "core", None)
-                except Exception:
+                except ImportError:
                     core = None
             debug_state = _ColorDebugState(
                 enabled=core is not None,
@@ -2543,7 +2547,7 @@ def generate_screenshots(
             if mapper is not None:
                 try:
                     mapped_idx, _, clamped = mapper.map_frame(frame_idx)
-                except Exception as exc:  # pragma: no cover - mapper issues
+                except (IndexError, ValueError, LookupError) as exc:
                     logger.warning(
                         "Failed to map frame %s for %s via alignment: %s",
                         frame_idx,
@@ -2598,7 +2602,7 @@ def generate_screenshots(
                     current_props.update(dynamic_props)
                 else:
                     logger.debug("Frame %s falls within padding; skipping dynamic props", actual_idx)
-            except Exception as exc:
+            except (RuntimeError, ValueError, KeyError) as exc:
                 logger.debug("Failed to fetch dynamic props for frame %s: %s", actual_idx, exc)
 
             if debug_enabled:
@@ -2685,7 +2689,7 @@ def generate_screenshots(
                 message = (
                     f"[RENDER] Falling back to placeholder for frame {frame_idx} of {file_path}: {exc}"
                 )
-                logger.warning(message)
+                logger.exception(message)
                 if warnings_sink is not None:
                     warnings_sink.append(message)
                 _save_frame_placeholder(target_path)

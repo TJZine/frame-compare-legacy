@@ -70,7 +70,7 @@ def render_collection_name(template_text: str, context: Mapping[str, Any]) -> st
     try:
         template = Template(template_text)
         return template.safe_substitute(context)
-    except Exception:
+    except (TypeError, ValueError, KeyError):
         return template_text
 
 
@@ -92,9 +92,9 @@ def resolve_blocking(
         transport_cls = getattr(httpx, "AsyncHTTPTransport", None)
         if transport_cls is None:
             raise RuntimeError("httpx.AsyncHTTPTransport is unavailable in this environment")
-        transport = transport_cls(retries=max(0, transport_retries))
+        transport: Any = transport_cls(retries=max(0, transport_retries))
 
-        async def _make_coro() -> TMDBResolution | None:
+        async def _make_coro(transport: Any = transport) -> TMDBResolution | None:
             return await resolve_tmdb(
                 file_name,
                 config=tmdb_cfg,
@@ -115,10 +115,14 @@ def resolve_blocking(
             result_holder: list[TMDBResolution | None] = []
             error_holder: list[BaseException] = []
 
-            def _worker() -> None:
+            def _worker(
+                result_holder: list[TMDBResolution | None] = result_holder,
+                error_holder: list[BaseException] = error_holder,
+            ) -> None:
                 try:
                     result_holder.append(asyncio.run(_make_coro()))
-                except BaseException as exc:  # pragma: no cover - bubbled up when joined
+                except BaseException as exc:  # noqa: BLE001
+                    # Captured to bubble up when joined
                     error_holder.append(exc)
 
             thread = threading.Thread(target=_worker, daemon=True)

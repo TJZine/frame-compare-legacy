@@ -87,7 +87,7 @@ def test_resolve_effective_tonemap_keeps_manual_overrides() -> None:
     cfg = ColorConfig()
     cfg.preset = "filmic"
     cfg.target_nits = 120.0
-    setattr(cfg, "_provided_keys", {"preset", "target_nits"})
+    cfg._provided_keys = {"preset", "target_nits"}
 
     resolved = vs_core.resolve_effective_tonemap(cfg)
 
@@ -238,7 +238,7 @@ def test_detect_rgb_color_range_identifies_limited(monkeypatch: Any) -> None:
     std = _DetectStd(frames)
     clip = types.SimpleNamespace(
         format=types.SimpleNamespace(
-            color_family=getattr(fake_vs, "RGB"),
+            color_family=fake_vs.RGB,
             sample_type=_FakeSampleType("INTEGER", 0),
             bits_per_sample=16,
         )
@@ -252,7 +252,7 @@ def test_detect_rgb_color_range_identifies_limited(monkeypatch: Any) -> None:
         label="limited",
     )
 
-    assert detected == getattr(fake_vs, "RANGE_LIMITED")
+    assert detected == fake_vs.RANGE_LIMITED
     assert source == "plane_stats"
 
 
@@ -265,7 +265,7 @@ def test_detect_rgb_color_range_identifies_full(monkeypatch: Any) -> None:
     std = _DetectStd(frames)
     clip = types.SimpleNamespace(
         format=types.SimpleNamespace(
-            color_family=getattr(fake_vs, "RGB"),
+            color_family=fake_vs.RGB,
             sample_type=_FakeSampleType("INTEGER", 0),
             bits_per_sample=16,
         )
@@ -279,7 +279,7 @@ def test_detect_rgb_color_range_identifies_full(monkeypatch: Any) -> None:
         label="full",
     )
 
-    assert detected == getattr(fake_vs, "RANGE_FULL")
+    assert detected == fake_vs.RANGE_FULL
     assert source == "plane_stats"
 
 
@@ -292,7 +292,7 @@ def test_detect_rgb_color_range_detects_undershoot(monkeypatch: Any) -> None:
     std = _DetectStd(frames)
     clip = types.SimpleNamespace(
         format=types.SimpleNamespace(
-            color_family=getattr(fake_vs, "RGB"),
+            color_family=fake_vs.RGB,
             sample_type=_FakeSampleType("INTEGER", 0),
             bits_per_sample=16,
         )
@@ -306,7 +306,7 @@ def test_detect_rgb_color_range_detects_undershoot(monkeypatch: Any) -> None:
         label="undershoot",
     )
 
-    assert detected == getattr(fake_vs, "RANGE_LIMITED")
+    assert detected == fake_vs.RANGE_LIMITED
     assert source == "plane_stats"
 
 
@@ -720,12 +720,12 @@ def test_normalise_color_metadata_backfills_hdr_defaults(monkeypatch: Any) -> No
     assert color_tuple == (
         expected_matrix,
         16,
-        int(getattr(fake_vs, "PRIMARIES_BT2020")),
+        int(fake_vs.PRIMARIES_BT2020),
         int(fake_vs.RANGE_LIMITED),
     )
     assert props["_Matrix"] == expected_matrix
     assert props["_Transfer"] == 16
-    assert props["_Primaries"] == int(getattr(fake_vs, "PRIMARIES_BT2020"))
+    assert props["_Primaries"] == int(fake_vs.PRIMARIES_BT2020)
     assert vs_core._props_signal_hdr(props) is True
 
 
@@ -858,8 +858,8 @@ def test_normalise_color_metadata_warns_for_mismatched_limited(monkeypatch: Any)
 
 def test_process_clip_tonemaps_after_negative_trim(monkeypatch: Any) -> None:
     fake_vs = _install_fake_vs(monkeypatch)
-    setattr(fake_vs, "RGB48", object())
-    setattr(fake_vs, "RGB24", object())
+    fake_vs.RGB48 = object()
+    fake_vs.RGB24 = object()
     core = _PaddingCore(fake_vs)
     hdr_props = {"_Matrix": 9, "_Primaries": 9, "_Transfer": 16, "_ColorRange": 1}
     clip = _PaddingTestClip(core, [hdr_props])
@@ -884,7 +884,7 @@ def test_process_clip_tonemaps_after_negative_trim(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         vs_tonemap,
         "_detect_rgb_color_range",
-        lambda *args, **kwargs: (getattr(fake_vs, "RANGE_LIMITED"), "plane_stats"),
+        lambda *args, **kwargs: (fake_vs.RANGE_LIMITED, "plane_stats"),
     )
     monkeypatch.setattr(
         vs_tonemap,
@@ -982,8 +982,8 @@ def test_init_clip_reuses_source_props_hint_for_padding(
 
 def test_process_clip_tonemaps_with_mastering_metadata_only(monkeypatch: Any) -> None:
     fake_vs = _install_fake_vs(monkeypatch)
-    setattr(fake_vs, "RGB48", object())
-    setattr(fake_vs, "RGB24", object())
+    fake_vs.RGB48 = object()
+    fake_vs.RGB24 = object()
     core = _PaddingCore(fake_vs)
     hdr_props = {"_MasteringDisplayMaxLuminance": 2000}
     clip = _PaddingTestClip(core, [dict(hdr_props)])
@@ -1000,7 +1000,7 @@ def test_process_clip_tonemaps_with_mastering_metadata_only(monkeypatch: Any) ->
         normalized_props.setdefault("_Matrix", 9)
         normalized_props.setdefault("_Transfer", 16)
         normalized_props.setdefault("_Primaries", 9)
-        normalized_props.setdefault("_ColorRange", int(getattr(fake_vs, "RANGE_LIMITED")))
+        normalized_props.setdefault("_ColorRange", int(fake_vs.RANGE_LIMITED))
         return clip_obj, normalized_props, (
             normalized_props.get("_Matrix"),
             normalized_props.get("_Transfer"),
@@ -1015,7 +1015,7 @@ def test_process_clip_tonemaps_with_mastering_metadata_only(monkeypatch: Any) ->
     monkeypatch.setattr(
         vs_tonemap,
         "_detect_rgb_color_range",
-        lambda *args, **kwargs: (getattr(fake_vs, "RANGE_LIMITED"), "plane_stats"),
+        lambda *args, **kwargs: (fake_vs.RANGE_LIMITED, "plane_stats"),
     )
     monkeypatch.setattr(
         vs_tonemap,
@@ -1043,8 +1043,8 @@ def test_process_clip_tonemaps_with_mastering_metadata_only(monkeypatch: Any) ->
 
 def test_process_clip_rehydrates_mastering_metadata_from_plan(monkeypatch: Any) -> None:
     fake_vs = _install_fake_vs(monkeypatch)
-    setattr(fake_vs, "RGB48", object())
-    setattr(fake_vs, "RGB24", object())
+    fake_vs.RGB48 = object()
+    fake_vs.RGB24 = object()
     core = _PaddingCore(fake_vs)
     clip = _PaddingTestClip(core, [{}])
     stored_props = {
@@ -1061,7 +1061,7 @@ def test_process_clip_rehydrates_mastering_metadata_from_plan(monkeypatch: Any) 
         normalized_props.setdefault("_Matrix", 9)
         normalized_props.setdefault("_Transfer", 16)
         normalized_props.setdefault("_Primaries", 9)
-        normalized_props.setdefault("_ColorRange", int(getattr(fake_vs, "RANGE_LIMITED")))
+        normalized_props.setdefault("_ColorRange", int(fake_vs.RANGE_LIMITED))
         return clip_obj, normalized_props, (
             normalized_props.get("_Matrix"),
             normalized_props.get("_Transfer"),
@@ -1076,7 +1076,7 @@ def test_process_clip_rehydrates_mastering_metadata_from_plan(monkeypatch: Any) 
     monkeypatch.setattr(
         vs_tonemap,
         "_detect_rgb_color_range",
-        lambda *args, **kwargs: (getattr(fake_vs, "RANGE_LIMITED"), "plane_stats"),
+        lambda *args, **kwargs: (fake_vs.RANGE_LIMITED, "plane_stats"),
     )
     monkeypatch.setattr(
         vs_tonemap,

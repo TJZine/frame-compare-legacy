@@ -30,7 +30,7 @@ def _emit_vs_dovi_debug(payload: Mapping[str, Any]) -> None:
         return
     try:
         message = json.dumps(dict(payload), default=str)
-    except Exception:
+    except (TypeError, ValueError):
         logger.debug("Unable to serialize VS tonemap debug payload", exc_info=True)
         return
     print("[DOVI_DEBUG]", message, file=sys.stderr)
@@ -203,7 +203,7 @@ def _call_tonemap_function(
         attempts += 1
         try:
             return func(clip, **usable_kwargs)
-        except Exception as exc:  # pragma: no cover - vapoursynth raises custom errors
+        except Exception as exc:  # noqa: BLE001
             missing_names = _parse_unexpected_kwarg(exc)
             handled = False
             for missing in missing_names:
@@ -243,7 +243,7 @@ def _apply_post_gamma_levels(
         if sample_type is not None:
             try:
                 sample_type_val = int(sample_type)
-            except Exception:
+            except (ValueError, TypeError):
                 name = str(getattr(sample_type, "name", "")).upper()
                 if name == "INTEGER":
                     sample_type_val = 0
@@ -277,7 +277,7 @@ def _apply_post_gamma_levels(
         )
         log.info("[TM GAMMA] %s applied gamma=%.3f", file_name, gamma)
         return adjusted, True
-    except Exception as exc:  # pragma: no cover - defensive
+    except (RuntimeError, ValueError) as exc:
         log.warning("[TM GAMMA] %s failed to apply gamma: %s", file_name, exc)
         return clip, False
 
@@ -346,15 +346,15 @@ def _tonemap_with_retries(
     if src_hint is not None:
         try:
             return _attempt(src_csp=src_hint)
-        except Exception as exc:
+        except (RuntimeError, ValueError) as exc:
             logger.warning("[Tonemap attempt A failed] %s src_csp=%s: %s", file_name, src_hint, exc)
     try:
         return _attempt()
-    except Exception as exc:
+    except (RuntimeError, ValueError) as exc:
         logger.warning("[Tonemap attempt B failed] %s infer-from-props: %s", file_name, exc)
     try:
         return _attempt(src_csp=1)
-    except Exception as exc:
+    except (RuntimeError, ValueError) as exc:
         raise ClipProcessError(
             f"libplacebo.Tonemap final fallback failed for '{file_name}': {exc}"
         ) from exc
@@ -727,7 +727,7 @@ def _format_overlay_text(
     }
     try:
         return template.format(**values)
-    except Exception:
+    except (ValueError, KeyError, IndexError):
         return template
 
 
@@ -798,7 +798,7 @@ def _pick_verify_frame(
     stats_clip = None
     try:
         stats_clip = clip.std.PlaneStats()
-    except Exception as exc:
+    except (RuntimeError, ValueError) as exc:
         message = f"[VERIFY] {file_name} unable to create PlaneStats: {exc}"
         logger.warning(message)
         if warning_sink is not None:
@@ -811,7 +811,7 @@ def _pick_verify_frame(
     for idx in range(start_frame or 1, max_frame + 1, step_frames):
         try:
             frame = stats_clip.get_frame(idx)
-        except Exception:
+        except (RuntimeError, ValueError):
             continue
         avg = float(frame.props.get("PlaneStatsAverage", 0.0))
         if avg >= threshold:
@@ -867,7 +867,7 @@ def _compute_verification(
         else:
             try:
                 is_integer_format = int(sample_type) == 0
-            except Exception:
+            except (ValueError, TypeError):
                 is_integer_format = False
 
     if is_integer_format and isinstance(bits, int) and bits > 0:
@@ -978,7 +978,7 @@ def process_clip_for_screenshot(
     source_range_value: Optional[int]
     try:
         source_range_value = int(color_range_in) if color_range_in is not None else None
-    except Exception:
+    except (ValueError, TypeError):
         source_range_value = None
     if source_range_value not in (range_full, range_limited):
         source_range_value = None
@@ -1048,7 +1048,7 @@ def process_clip_for_screenshot(
 
     rgb16 = spline36(
         clip,
-        format=getattr(vs_module, "RGB48"),
+        format=vs_module.RGB48,
         matrix_in=matrix_in if matrix_in is not None else 1,
         transfer_in=transfer_in if transfer_in is not None else None,
         primaries_in=primaries_in if primaries_in is not None else None,
@@ -1113,7 +1113,7 @@ def process_clip_for_screenshot(
     ):
         try:
             effective_range = int(color_range_in)
-        except Exception:
+        except (ValueError, TypeError):
             effective_range = None
         else:
             fallback_source = fallback_source or "source_props"
@@ -1122,7 +1122,7 @@ def process_clip_for_screenshot(
     if color_range_in is not None and color_range_in in (range_full, range_limited):
         try:
             source_range_int = int(color_range_in)
-        except Exception:
+        except (ValueError, TypeError):
             source_range_int = None
 
     if effective_range is not None:
@@ -1251,7 +1251,7 @@ def process_clip_for_screenshot(
         try:
             naive = spline36(
                 clip,
-                format=getattr(vs_module, "RGB24"),
+                format=vs_module.RGB24,
                 matrix_in=matrix_in if matrix_in is not None else 1,
                 transfer_in=transfer_in if transfer_in is not None else None,
                 primaries_in=primaries_in if primaries_in is not None else None,
@@ -1266,7 +1266,7 @@ def process_clip_for_screenshot(
                 raise ClipProcessError("VapourSynth resize.Point is unavailable")
             tm_rgb24 = point(
                 tonemapped,
-                format=getattr(vs_module, "RGB24"),
+                format=vs_module.RGB24,
                 range=range_full,
                 dither_type="error_diffusion",
             )
@@ -1284,7 +1284,7 @@ def process_clip_for_screenshot(
                 verification.average,
                 verification.maximum,
             )
-        except Exception as exc:
+        except (RuntimeError, ValueError) as exc:
             message = f"Verification failed for '{file_name}': {exc}"
             log.error("[VERIFY] %s", message)
             if strict:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping as MappingABC
 from pathlib import Path
-from typing import Any, Dict, Mapping, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Mapping, cast
 
 from src import audio_alignment
 from src.frame_compare.cli_runtime import CLIAppError

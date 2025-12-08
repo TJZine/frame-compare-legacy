@@ -76,7 +76,7 @@ def resolve_subdir(
 
     try:
         root_resolved = root.resolve()
-    except OSError as exc:  # pragma: no cover - unexpected filesystem failure
+    except OSError as exc:
         raise CLIAppError(
             f"Unable to resolve workspace root '{root}': {exc}",
             rich_message=f"[red]Unable to resolve workspace root:[/red] {exc}",
@@ -119,7 +119,7 @@ def _path_is_within_root(root: Path, candidate: Path) -> bool:
     try:
         root_resolved = root.resolve()
         candidate_resolved = candidate.resolve()
-    except OSError:  # pragma: no cover - unexpected filesystem failure
+    except OSError:
         return False
 
     try:
@@ -382,7 +382,7 @@ def prepare_preflight(
                 if auto_wizard_base_allowed:
                     try:
                         cli_module = importlib.import_module("frame_compare")
-                    except Exception:
+                    except (ImportError, AttributeError, TypeError):
                         cli_module = None
                     if not interactive and cli_module is not None:
                         proxy_sys = getattr(cli_module, "sys", None)
@@ -390,12 +390,12 @@ def prepare_preflight(
                         if proxy_stdin is not None:
                             try:
                                 interactive = bool(proxy_stdin.isatty())
-                            except Exception:
+                            except (AttributeError, ValueError, OSError):
                                 pass
                 auto_wizard_allowed = bool(cli_module and auto_wizard_base_allowed and interactive)
-                if auto_wizard_allowed:
+                if auto_wizard_allowed and cli_module:
                     try:
-                        execute_wizard = getattr(cli_module, "_execute_wizard_session")
+                        execute_wizard = cli_module._execute_wizard_session
                         new_root, new_config_path = execute_wizard(
                             root_override=str(workspace_root),
                             config_override=None,

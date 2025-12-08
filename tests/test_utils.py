@@ -88,25 +88,23 @@ def test_guessit_error_fallback(monkeypatch: MonkeyPatch) -> None:
     def fake_import(name: str):
         if name == "guessit":
             def _raiser(_: str) -> Dict[str, Any]:
-                raise RuntimeError("boom")
+                raise ValueError("boom") # Raise ValueError to be caught
             return types.SimpleNamespace(guessit=_raiser)
         if name == "anitopy":
             return types.SimpleNamespace(parse=lambda _: fake_ani_result)
         return original_import(name)
 
-    monkeypatch.setattr(utils, "import_module", fake_import)
+        monkeypatch.setattr(utils, "import_module", fake_import)
 
-    meta = utils.parse_filename_metadata(
-        "[FB] Title - 04.mkv",
-        prefer_guessit=True,
-        always_full_filename=False,
-    )
-
-    assert meta["anime_title"] == "Fallback Show"
-    assert meta["release_group"] == "FB"
-    assert meta["label"] != "[FB] Title - 04.mkv"
-    assert meta["label"].startswith("[FB] Fallback Show")
-
+        meta = utils.parse_filename_metadata(
+            "[FB] Title - 04.mkv",
+            prefer_guessit=True,
+            always_full_filename=False,
+        )
+        assert meta["anime_title"] == "Fallback Show"
+        assert meta["release_group"] == "FB"
+        assert meta["label"] != "[FB] Title - 04.mkv"
+        assert meta["label"].startswith("[FB] Fallback Show")
 
 def test_metadata_includes_year_and_ids(monkeypatch: MonkeyPatch) -> None:
     original_import = utils.import_module

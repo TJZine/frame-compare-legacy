@@ -121,7 +121,7 @@ def set_ram_limit(limit_mb: int, *, core: Optional[Any] = None) -> None:
 
     resolved_core = _resolve_core(core)
     try:
-        setattr(resolved_core, "max_cache_size", int(limit_mb))
+        resolved_core.max_cache_size = int(limit_mb)
     except Exception as exc:  # pragma: no cover - defensive
         raise ClipInitError("Failed to apply VapourSynth RAM limit") from exc
 

@@ -57,7 +57,7 @@ class DoviToolService:
                     cached_data = json.load(f)
                     logger.info("Found cached dovi info at %s with %d frames", cache_path, len(cached_data))
                     return cached_data
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 logger.warning("Failed to load cached dovi info: %s", e)
 
         rpu_bin = None
@@ -97,7 +97,7 @@ class DoviToolService:
             try:
                 with open(cache_path, "w", encoding="utf-8") as f:
                     json.dump(frames_metadata, f)
-            except Exception as e:
+            except OSError as e:
                 logger.warning("Failed to write dovi info cache: %s", e)
 
             return frames_metadata
@@ -108,8 +108,8 @@ class DoviToolService:
         except json.JSONDecodeError as e:
             logger.warning("Failed to parse dovi_tool output: %s", e)
             return []
-        except Exception as e:
-            logger.warning("Unexpected error running dovi_tool: %s", e)
+        except (OSError, RuntimeError):
+            logger.exception("Unexpected error running dovi_tool")
             return []
         finally:
             # Cleanup temp files
@@ -156,7 +156,7 @@ class DoviToolService:
 
             linear_val = (num / den) ** (1.0 / m1)
             return linear_val * 10000.0
-        except Exception:
+        except (ArithmeticError, ValueError, TypeError):
             return 0.0
 
     def _parse_dovi_json(self, data: Any) -> List[Dict[str, Any]]:
