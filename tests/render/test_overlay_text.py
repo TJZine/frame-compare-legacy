@@ -8,7 +8,7 @@ from src.frame_compare.render import overlay
 
 if TYPE_CHECKING:
     from src.frame_compare.vs import TonemapInfo
-    from src.screenshot import GeometryPlan
+    from src.frame_compare.screenshot.config import GeometryPlan
 else:  # pragma: no cover - typing fallback
     GeometryPlan = Dict[str, Any]
     TonemapInfo = Any

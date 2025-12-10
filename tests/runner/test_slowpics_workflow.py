@@ -329,8 +329,8 @@ def test_runner_auto_upload_cleans_screens_dir(tmp_path: Path, monkeypatch: pyte
     files = [media_root / "Alpha.mkv", media_root / "Beta.mkv"]
     metadata = [{"label": "Alpha"}, {"label": "Beta"}]
     plans = [
-        core_module._ClipPlan(path=files[0], metadata={"label": "Alpha"}),
-        core_module._ClipPlan(path=files[1], metadata={"label": "Beta"}),
+        core_module.ClipPlan(path=files[0], metadata={"label": "Alpha"}),
+        core_module.ClipPlan(path=files[1], metadata={"label": "Beta"}),
     ]
     plans[0].use_as_reference = True
 

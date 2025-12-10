@@ -330,34 +330,54 @@ def _build_context(tmp_path: Path) -> tuple[runner_module.RunContext, JsonTail, 
 
 
 def test_publish_results_uses_services(tmp_path: Path) -> None:
-    context, json_tail, layout_data, cfg = _build_context(tmp_path)
+    context_old, json_tail, layout_data, cfg = _build_context(tmp_path)
     reporter = StubReporter()
     report_publisher = _StubReportPublisher()
     slowpics_publisher = _StubSlowpicsPublisher()
 
-    coordinator = WorkflowCoordinator()
-    slowpics_url, report_path = coordinator._publish_results(
-        context=context,
-        reporter=reporter,
-        cfg=cfg,
-        layout_data=layout_data,
-        json_tail=json_tail,
-        image_paths=["img-a.png"],
-        out_dir=tmp_path,
-        collected_warnings=[],
-        report_enabled=True,
-        root=tmp_path,
-        plans=list(context.plans),
-        frames=[1, 2],
-        selection_details={},
+    deps = _build_dependencies(
+        metadata_resolver=object(),
+        alignment_workflow=object(),
         report_publisher=report_publisher,
         slowpics_publisher=slowpics_publisher,
     )
 
+    from src.frame_compare.orchestration.state import CoordinatorContext
+    from src.frame_compare.orchestration.phases.publish import PublishPhase
+
+    request = runner_module.RunRequest(config_path=None, reporter=reporter)
+    coord_context = CoordinatorContext(request=request, dependencies=deps)
+    
+    # Mock env
+    coord_context.env = SimpleNamespace(
+        cfg=cfg,
+        reporter=reporter,
+        out_dir=tmp_path,
+        report_enabled=True,
+        root=tmp_path,
+        collected_warnings=[],
+    )  # type: ignore
+
+    coord_context.json_tail = json_tail
+    coord_context.layout_data = layout_data
+    coord_context.plans = context_old.plans
+    coord_context.image_paths = ["img-a.png"]
+    coord_context.frames = [1, 2]
+    coord_context.selection_details = {}
+    
+    coord_context.slowpics_title_inputs = context_old.slowpics_title_inputs
+    coord_context.slowpics_final_title = context_old.slowpics_final_title
+    coord_context.slowpics_resolved_base = context_old.slowpics_resolved_base
+    coord_context.slowpics_tmdb_disclosure_line = context_old.slowpics_tmdb_disclosure_line
+    coord_context.slowpics_verbose_tmdb_tag = context_old.slowpics_verbose_tmdb_tag
+
+    phase = PublishPhase()
+    phase.execute(coord_context)
+
     assert report_publisher.call_count == 1
     assert slowpics_publisher.call_count == 1
-    assert slowpics_url == "https://slow.pics/c/test"
-    assert report_path is None
+    assert coord_context.slowpics_url == "https://slow.pics/c/test"
+    assert coord_context.report_path is None
 
 
 def test_reporter_flags_initialized_with_service_context(

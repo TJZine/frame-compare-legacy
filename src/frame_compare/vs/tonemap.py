@@ -17,8 +17,8 @@ from .props import (  # pyright: ignore[reportPrivateUsage]
     _apply_frame_props_dict,  # pyright: ignore[reportPrivateUsage]
     _call_set_frame_prop,  # pyright: ignore[reportPrivateUsage]
     _ensure_std_namespace,  # pyright: ignore[reportPrivateUsage]
-    _props_signal_hdr,  # pyright: ignore[reportPrivateUsage]
-    _snapshot_frame_props,  # pyright: ignore[reportPrivateUsage]
+    props_signal_hdr,  # pyright: ignore[reportPrivateUsage]
+    snapshot_frame_props,  # pyright: ignore[reportPrivateUsage]
 )
 
 logger = logging.getLogger("src.frame_compare.vs.tonemap")
@@ -916,7 +916,7 @@ def process_clip_for_screenshot(
     """
 
     log = logger_override or logger
-    base_props = _snapshot_frame_props(clip)
+    base_props = snapshot_frame_props(clip)
     merged_props = dict(base_props)
     if stored_source_props:
         merged_props = dict(stored_source_props)
@@ -960,7 +960,7 @@ def process_clip_for_screenshot(
 
     matrix_in, transfer_in, primaries_in, color_range_in = color_tuple
     tonemap_enabled = bool(getattr(cfg, "enable_tonemap", True))
-    is_hdr_source = _props_signal_hdr(source_props)
+    is_hdr_source = props_signal_hdr(source_props)
     is_hdr = tonemap_enabled and is_hdr_source
 
     range_limited = getattr(vs_module, "RANGE_LIMITED", 1)

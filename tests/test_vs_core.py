@@ -125,22 +125,22 @@ def test_resolve_tonemap_settings_uses_color_defaults() -> None:
     assert settings.contrast_recovery == pytest.approx(0.3)
 
 
-def test_props_signal_hdr_accepts_transfer_only() -> None:
+def testprops_signal_hdr_accepts_transfer_only() -> None:
     props = {"_Transfer": 16}
 
-    assert vs_core._props_signal_hdr(props) is True
+    assert vs_core.props_signal_hdr(props) is True
 
 
-def test_props_signal_hdr_accepts_primaries_only() -> None:
+def testprops_signal_hdr_accepts_primaries_only() -> None:
     props = {"_Primaries": 9}
 
-    assert vs_core._props_signal_hdr(props) is True
+    assert vs_core.props_signal_hdr(props) is True
 
 
-def test_props_signal_hdr_detects_mastering_metadata() -> None:
+def testprops_signal_hdr_detects_mastering_metadata() -> None:
     props = {"_MasteringDisplayMaxLuminance": 1000}
 
-    assert vs_core._props_signal_hdr(props) is True
+    assert vs_core.props_signal_hdr(props) is True
 
 
 class _FakeSampleType:
@@ -726,7 +726,7 @@ def test_normalise_color_metadata_backfills_hdr_defaults(monkeypatch: Any) -> No
     assert props["_Matrix"] == expected_matrix
     assert props["_Transfer"] == 16
     assert props["_Primaries"] == int(fake_vs.PRIMARIES_BT2020)
-    assert vs_core._props_signal_hdr(props) is True
+    assert vs_core.props_signal_hdr(props) is True
 
 
 def test_normalise_color_metadata_infers_sd_defaults(monkeypatch: Any) -> None:
@@ -920,7 +920,7 @@ def test_init_clip_preserves_mastering_metadata_on_padding(
 
     mastering_props = {"_MasteringDisplayMaxLuminance": 1500}
     monkeypatch.setattr(vs_source, "_open_clip_with_sources", lambda *args, **kwargs: clip)
-    monkeypatch.setattr(vs_source, "_snapshot_frame_props", lambda _clip: dict(mastering_props))
+    monkeypatch.setattr(vs_source, "snapshot_frame_props", lambda _clip: dict(mastering_props))
 
     padded_clip = vs_source.init_clip(
         str(tmp_path / "sample.mkv"),
@@ -950,7 +950,7 @@ def test_init_clip_reuses_source_props_hint_for_padding(
         snapshot_called = True
         return {"_Matrix": 1}
 
-    monkeypatch.setattr(vs_source, "_snapshot_frame_props", fake_snapshot)
+    monkeypatch.setattr(vs_source, "snapshot_frame_props", fake_snapshot)
 
     collected: list[Mapping[str, Any]] = []
 

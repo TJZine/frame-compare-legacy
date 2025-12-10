@@ -36,7 +36,7 @@ from src.frame_compare.cli_runtime import (
     NullCliOutputManager,
     _AudioAlignmentDisplayData,
     _AudioAlignmentSummary,
-    _ClipPlan,
+    ClipPlan,
 )
 from src.frame_compare.orchestration.state import RunEnvironment
 from src.frame_compare.preflight import PreflightResult
@@ -95,10 +95,11 @@ def _setup_cli_analysis_environment(
         lambda _files, _metadata, _target, **_kwargs: reference_path,
     )
 
-    import src.frame_compare.orchestration.coordinator as coordinator_module
-    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *args, **kwargs: None)
-    monkeypatch.setattr(coordinator_module, "generate_screenshots", lambda *args, **kwargs: [])
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
+    monkeypatch.setattr(analysis_phase_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render_phase_module, "generate_screenshots", lambda *args, **kwargs: [])
 
     cache_file = cli_runner_env.media_root / cfg.analysis.frame_data_filename
     return reference_path, target_path, cache_file
@@ -136,11 +137,11 @@ def test_audio_alignment_manual_vspreview_handles_existing_trim(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -177,11 +178,11 @@ def test_audio_alignment_string_false_vspreview_triggers_measurement(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -238,11 +239,11 @@ def test_audio_alignment_prompt_reuse_decline(tmp_path: Path, monkeypatch: pytes
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -322,11 +323,11 @@ def test_audio_alignment_prompt_reuse_hydrates_suggestions(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -415,11 +416,11 @@ def test_audio_alignment_prompt_reuse_affirm(tmp_path: Path, monkeypatch: pytest
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -558,10 +559,11 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
 
     _patch_vs_core(monkeypatch, "init_clip", fake_init_clip)
 
-    import src.frame_compare.orchestration.coordinator as coordinator_module
-    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *args, **kwargs: None)
-    monkeypatch.setattr(coordinator_module, "generate_screenshots", lambda *args, **kwargs: [])
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
+    monkeypatch.setattr(analysis_phase_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render_phase_module, "generate_screenshots", lambda *args, **kwargs: [])
 
     def fake_select(
         clip: types.SimpleNamespace,
@@ -579,7 +581,7 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
         assert cache_probe is not None and cache_probe.status == "reused"
         return [10, 20]
 
-    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
+    monkeypatch.setattr(analysis_phase_module, "select_frames", fake_select)
 
     cache_probes: list[FrameMetricsCacheInfo] = []
 
@@ -587,7 +589,7 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
         cache_probes.append(info)
         return CacheLoadResult(metrics=None, status="reused", reason=None)
 
-    monkeypatch.setattr(coordinator_module, "probe_cached_metrics", fake_probe)
+    monkeypatch.setattr(analysis_phase_module, "probe_cached_metrics", fake_probe)
 
     reporter = _RecordingOutputManager()
     env = RunEnvironment(
@@ -618,8 +620,8 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
     mock_metadata = MagicMock()
     mock_metadata.resolve.return_value = MetadataResolveResult(
         plans=[
-            _ClipPlan(path=reference_path, metadata={"label": "Reference"}, use_as_reference=True),
-            _ClipPlan(path=target_path, metadata={"label": "Target"}),
+            ClipPlan(path=reference_path, metadata={"label": "Reference"}, use_as_reference=True),
+            ClipPlan(path=target_path, metadata={"label": "Target"}),
         ],
         metadata=[{"label": "Reference"}, {"label": "Target"}],
         metadata_title="Test Title",
@@ -635,8 +637,8 @@ def test_run_cli_reuses_vspreview_manual_offsets_when_alignment_disabled(
     mock_alignment = MagicMock()
     # Create new plans with expected trims applied
     aligned_plans = [
-        _ClipPlan(path=reference_path, metadata={"label": "Reference"}, use_as_reference=True, trim_start=0),
-        _ClipPlan(path=target_path, metadata={"label": "Target"}, trim_start=11),
+        ClipPlan(path=reference_path, metadata={"label": "Reference"}, use_as_reference=True, trim_start=0),
+        ClipPlan(path=target_path, metadata={"label": "Target"}, trim_start=11),
     ]
 
     def _alignment_side_effect(request: AlignmentRequest) -> AlignmentResult:
@@ -715,8 +717,9 @@ def test_run_cli_surfaces_cache_recompute_reason(
         assert info.path == cache_file.resolve()
         return CacheLoadResult(metrics=None, status="stale", reason=reason_code)
 
-    import src.frame_compare.orchestration.coordinator as coordinator_module
-    monkeypatch.setattr(coordinator_module, "probe_cached_metrics", fake_probe)
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
+    monkeypatch.setattr(analysis_phase_module, "probe_cached_metrics", fake_probe)
 
     observed_probes: list[CacheLoadResult | None] = []
 
@@ -733,7 +736,7 @@ def test_run_cli_surfaces_cache_recompute_reason(
             return frames, categories, {}
         return frames
 
-    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
+    monkeypatch.setattr(analysis_phase_module, "select_frames", fake_select)
 
     result = frame_compare.run_cli(None, None)
 
@@ -759,8 +762,9 @@ def test_run_cli_reports_missing_cache_reason(
     def _probe_unused(*_args: object, **_kwargs: object) -> CacheLoadResult:
         raise AssertionError("probe_cached_metrics should not be called when cache file is missing")
 
-    import src.frame_compare.orchestration.coordinator as coordinator_module
-    monkeypatch.setattr(coordinator_module, "probe_cached_metrics", _probe_unused)
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
+    monkeypatch.setattr(analysis_phase_module, "probe_cached_metrics", _probe_unused)
 
     observed_probes: list[CacheLoadResult | None] = []
 
@@ -777,7 +781,7 @@ def test_run_cli_reports_missing_cache_reason(
             return frames, categories, {}
         return frames
 
-    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
+    monkeypatch.setattr(analysis_phase_module, "select_frames", fake_select)
 
     result = frame_compare.run_cli(None, None)
 
@@ -807,12 +811,12 @@ def test_audio_alignment_vspreview_suggestion_mode(
     cfg.audio_alignment.enable = True
     cfg.audio_alignment.use_vspreview = True
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
         clip=None,
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
         clip=None,
@@ -899,11 +903,11 @@ def test_launch_vspreview_generates_script(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -975,7 +979,7 @@ def test_launch_vspreview_generates_script(
     apply_calls: list[Mapping[str, int]] = []
 
     def _record_apply(
-        _plans: Sequence[_ClipPlan],
+        _plans: Sequence[ClipPlan],
         _summary: _AudioAlignmentSummary,
         offsets: Mapping[str, int],
         *_args: object,
@@ -1031,11 +1035,11 @@ def test_launch_vspreview_baseline_mode_persists_manual_offsets(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -1127,11 +1131,11 @@ def test_vspreview_suggestions_use_measured_frames(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -1194,11 +1198,11 @@ def test_write_vspreview_script_generates_unique_filenames_same_second(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -1251,11 +1255,11 @@ def test_launch_vspreview_warns_when_command_missing(
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )
@@ -1339,8 +1343,8 @@ def test_format_alignment_output_updates_json_tail(tmp_path: Path) -> None:
     cfg = _make_config(tmp_path)
     cfg.audio_alignment.enable = True
 
-    reference_plan = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
-    target_plan = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
+    reference_plan = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
+    target_plan = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
     plans = [reference_plan, target_plan]
 
     offsets_path = tmp_path / "offsets.json"
@@ -1411,8 +1415,8 @@ def test_format_alignment_output_preserves_negative_manual_trim(tmp_path: Path) 
     cfg = _make_config(tmp_path)
     cfg.audio_alignment.enable = True
 
-    reference_plan = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
-    target_plan = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
+    reference_plan = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
+    target_plan = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
     plans = [reference_plan, target_plan]
 
     summary = _AudioAlignmentSummary(
@@ -1470,8 +1474,8 @@ def test_vspreview_manual_offsets_positive(
 ) -> None:
     reference_path = tmp_path / "Ref.mkv"
     target_path = tmp_path / "Target.mkv"
-    reference_plan = _ClipPlan(path=reference_path, metadata={"label": "Reference"})
-    target_plan = _ClipPlan(path=target_path, metadata={"label": "Target"})
+    reference_plan = ClipPlan(path=reference_path, metadata={"label": "Reference"})
+    target_plan = ClipPlan(path=target_path, metadata={"label": "Target"})
     target_plan.trim_start = 5
     target_plan.has_trim_start_override = True
     summary = _AudioAlignmentSummary(
@@ -1550,8 +1554,8 @@ def test_vspreview_manual_offsets_positive(
 def test_vspreview_manual_offsets_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reference_path = tmp_path / "Ref.mkv"
     target_path = tmp_path / "Target.mkv"
-    reference_plan = _ClipPlan(path=reference_path, metadata={"label": "Reference"})
-    target_plan = _ClipPlan(path=target_path, metadata={"label": "Target"})
+    reference_plan = ClipPlan(path=reference_path, metadata={"label": "Reference"})
+    target_plan = ClipPlan(path=target_path, metadata={"label": "Target"})
     target_plan.trim_start = 4
     summary = _AudioAlignmentSummary(
         offsets_path=tmp_path / "offsets.toml",
@@ -1597,8 +1601,8 @@ def test_vspreview_manual_offsets_zero(tmp_path: Path, monkeypatch: pytest.Monke
 def test_vspreview_manual_offsets_negative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reference_path = tmp_path / "Ref.mkv"
     target_path = tmp_path / "Target.mkv"
-    reference_plan = _ClipPlan(path=reference_path, metadata={"label": "Reference"})
-    target_plan = _ClipPlan(path=target_path, metadata={"label": "Target"})
+    reference_plan = ClipPlan(path=reference_path, metadata={"label": "Reference"})
+    target_plan = ClipPlan(path=target_path, metadata={"label": "Target"})
     target_plan.trim_start = 3
     summary = _AudioAlignmentSummary(
         offsets_path=tmp_path / "offsets.toml",
@@ -1656,9 +1660,9 @@ def test_vspreview_manual_offsets_multiple_negative(
     reference_path = tmp_path / "Ref.mkv"
     target_a_path = tmp_path / "A.mkv"
     target_b_path = tmp_path / "B.mkv"
-    reference_plan = _ClipPlan(path=reference_path, metadata={"label": "Reference"})
-    target_a_plan = _ClipPlan(path=target_a_path, metadata={"label": "A"})
-    target_b_plan = _ClipPlan(path=target_b_path, metadata={"label": "B"})
+    reference_plan = ClipPlan(path=reference_path, metadata={"label": "Reference"})
+    target_a_plan = ClipPlan(path=target_a_path, metadata={"label": "A"})
+    target_b_plan = ClipPlan(path=target_b_path, metadata={"label": "B"})
     target_a_plan.trim_start = 5
     target_b_plan.trim_start = 5
     summary = _AudioAlignmentSummary(
@@ -1770,8 +1774,8 @@ def test_runner_audio_alignment_summary_passthrough(
     files = [media_root / "Reference.mkv", media_root / "Target.mkv"]
     metadata = [{"label": "Reference"}, {"label": "Target"}]
     plans = [
-        core_module._ClipPlan(path=files[0], metadata={"label": "Reference"}),
-        core_module._ClipPlan(path=files[1], metadata={"label": "Target"}),
+        core_module.ClipPlan(path=files[0], metadata={"label": "Reference"}),
+        core_module.ClipPlan(path=files[1], metadata={"label": "Target"}),
     ]
     plans[0].use_as_reference = True
 
@@ -1836,22 +1840,23 @@ def test_runner_audio_alignment_summary_passthrough(
     monkeypatch.setattr(vs_core_module, "configure", lambda **_: None)
     monkeypatch.setattr(vs_core_module, "set_ram_limit", lambda *_: None)
     monkeypatch.setattr(vs_core_module, "init_clip", lambda *args, **kwargs: types.SimpleNamespace(num_frames=120, fps_num=24000, fps_den=1001, width=1280, height=720))
-    import src.frame_compare.orchestration.coordinator as coordinator_module
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
     monkeypatch.setattr(
-        coordinator_module,
+        analysis_phase_module,
         "probe_cached_metrics",
         lambda *_: CacheLoadResult(metrics=None, status="missing", reason=None),
     )
-    monkeypatch.setattr(coordinator_module, "selection_hash_for_config", lambda *_: "selection-hash")
-    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "selection_hash_for_config", lambda *_: "selection-hash")
+    monkeypatch.setattr(analysis_phase_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "export_selection_metadata", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        coordinator_module,
+        analysis_phase_module,
         "select_frames",
         lambda *args, **kwargs: ([5], {5: "Auto"}, {5: SelectionDetail(frame_index=5, label="Auto", score=None, source="Test", timecode="00:00:05.0")}),
     )
-    monkeypatch.setattr(coordinator_module, "selection_details_to_json", _selection_details_to_json)
-    monkeypatch.setattr(coordinator_module, "generate_screenshots", lambda *args, **kwargs: [str(media_root / "shot.png")])
+    monkeypatch.setattr(analysis_phase_module, "selection_details_to_json", _selection_details_to_json)
+    monkeypatch.setattr(render_phase_module, "generate_screenshots", lambda *args, **kwargs: [str(media_root / "shot.png")])
 
     monkeypatch.setattr(runner_module, "impl", frame_compare, raising=False)
     request = runner_module.RunRequest(
@@ -2360,7 +2365,7 @@ def _build_alignment_context(
     tmp_path: Path,
 ) -> tuple[
     AppConfig,
-    list[_ClipPlan],
+    list[ClipPlan],
     _AudioAlignmentSummary,
     _AudioAlignmentDisplayData,
 ]:
@@ -2400,12 +2405,12 @@ def _build_alignment_context(
     reference_path.touch()
     target_path.touch()
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference Clip"},
         clip=reference_clip,
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target Clip"},
         clip=target_clip,
@@ -2520,7 +2525,7 @@ def test_run_cli_calls_alignment_confirmation(
 
     def fake_build_plans(
         _files: Sequence[Path], metadata: Sequence[dict[str, str]], _cfg: AppConfig
-    ) -> list[_ClipPlan]:
+    ) -> list[ClipPlan]:
         """
         Builds a list of clip plans from input file paths and corresponding metadata, marking the first clip as the reference.
 
@@ -2530,12 +2535,12 @@ def test_run_cli_calls_alignment_confirmation(
             _cfg: Configuration object (not used by this fake builder, accepted for signature compatibility).
 
         Returns:
-            list[_ClipPlan]: A list of ClipPlan objects where the first element has `use_as_reference=True` and all others have `use_as_reference=False`.
+            list[ClipPlan]: A list of ClipPlan objects where the first element has `use_as_reference=True` and all others have `use_as_reference=False`.
         """
-        plans: list[_ClipPlan] = []
+        plans: list[ClipPlan] = []
         for idx, path in enumerate(_files):
             plans.append(
-                _ClipPlan(
+                ClipPlan(
                     path=path,
                     metadata=metadata[idx],
                     use_as_reference=(idx == 0),
@@ -2566,7 +2571,7 @@ def test_run_cli_calls_alignment_confirmation(
     offsets_path = cli_runner_env.workspace_root / "alignment.toml"
 
     def fake_maybe_apply(
-        plans: Sequence[_ClipPlan],
+        plans: Sequence[ClipPlan],
         _cfg: AppConfig,
         _analyze_path: Path,
         _root: Path,
@@ -2708,7 +2713,7 @@ def test_run_cli_calls_alignment_confirmation(
     called: dict[str, object] = {}
 
     def fake_confirm(
-        plans: Sequence[_ClipPlan],
+        plans: Sequence[ClipPlan],
         summary: _AudioAlignmentSummary,
         cfg_obj: AppConfig,
         root: Path,
@@ -2758,8 +2763,8 @@ def test_apply_audio_alignment_derives_frames_from_seconds(
     cfg.audio_alignment.use_vspreview = False
     cfg.audio_alignment.max_offset_seconds = 100.0
 
-    reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
-    target = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
+    reference = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
+    target = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
     for plan in (reference, target):
         plan.path.parent.mkdir(parents=True, exist_ok=True)
         plan.path.write_bytes(b"\x00")
@@ -2840,12 +2845,12 @@ def test_apply_audio_alignment_derives_frames_from_seconds(
 def test_plan_fps_map_prioritizes_available_metadata(tmp_path: Path) -> None:
     """_plan_fps_map() should record the first viable FPS tuple per plan."""
 
-    plan_a = _ClipPlan(path=tmp_path / "A.mkv", metadata={})
-    plan_b = _ClipPlan(path=tmp_path / "B.mkv", metadata={})
-    plan_c = _ClipPlan(path=tmp_path / "C.mkv", metadata={})
-    plan_d = _ClipPlan(path=tmp_path / "D.mkv", metadata={})
-    plan_e = _ClipPlan(path=tmp_path / "E.mkv", metadata={})
-    plan_f = _ClipPlan(path=tmp_path / "F.mkv", metadata={})
+    plan_a = ClipPlan(path=tmp_path / "A.mkv", metadata={})
+    plan_b = ClipPlan(path=tmp_path / "B.mkv", metadata={})
+    plan_c = ClipPlan(path=tmp_path / "C.mkv", metadata={})
+    plan_d = ClipPlan(path=tmp_path / "D.mkv", metadata={})
+    plan_e = ClipPlan(path=tmp_path / "E.mkv", metadata={})
+    plan_f = ClipPlan(path=tmp_path / "F.mkv", metadata={})
 
     plan_a.effective_fps = (24000, 1001)
     plan_a.source_fps = (1, 0)  # invalid, should be ignored

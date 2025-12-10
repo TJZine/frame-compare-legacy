@@ -171,18 +171,18 @@ def _install_analysis_stubs(
         }
         return [10], {10: "Auto"}, details
 
-    import src.frame_compare.orchestration.coordinator as coordinator_module
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
 
-    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
-    monkeypatch.setattr(coordinator_module, "selection_details_to_json", _selection_details_to_json)
+    monkeypatch.setattr(analysis_phase_module, "select_frames", fake_select)
+    monkeypatch.setattr(analysis_phase_module, "selection_details_to_json", _selection_details_to_json)
     monkeypatch.setattr(
-        coordinator_module,
+        analysis_phase_module,
         "probe_cached_metrics",
         lambda *_args, **_kwargs: CacheLoadResult(metrics=None, status="missing", reason=None),
     )
-    monkeypatch.setattr(coordinator_module, "selection_hash_for_config", lambda *_args, **_kwargs: "hash")
-    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "selection_hash_for_config", lambda *_args, **_kwargs: "hash")
+    monkeypatch.setattr(analysis_phase_module, "export_selection_metadata", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "write_selection_cache_file", lambda *_args, **_kwargs: None)
 
 
 def _install_render_stubs(monkeypatch: pytest.MonkeyPatch, out_dir: Path) -> None:
@@ -206,11 +206,11 @@ def _install_render_stubs(monkeypatch: pytest.MonkeyPatch, out_dir: Path) -> Non
             plan.clip = types.SimpleNamespace(width=plan.source_width, height=plan.source_height, num_frames=plan.source_num_frames or 120)
 
     import src.frame_compare.cache as cache_utils
-    import src.frame_compare.orchestration.coordinator as coordinator_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
     import src.frame_compare.selection as selection_utils
     from src.frame_compare import vs as vs_core
 
-    monkeypatch.setattr(coordinator_module, "generate_screenshots", fake_generate)
+    monkeypatch.setattr(render_phase_module, "generate_screenshots", fake_generate)
     monkeypatch.setattr(selection_utils, "init_clips", fake_init_clips)
     monkeypatch.setattr(
         cache_utils,

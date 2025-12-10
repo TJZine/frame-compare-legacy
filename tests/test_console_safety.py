@@ -9,7 +9,7 @@ from typing import Callable, Dict, Sequence, cast
 import pytest
 
 import src.frame_compare.core as core_module
-from src.frame_compare.cli_runtime import _AudioAlignmentSummary, _ClipPlan
+from src.frame_compare.cli_runtime import _AudioAlignmentSummary, ClipPlan
 
 
 @pytest.fixture
@@ -23,11 +23,11 @@ def _vspreview_script_text(tmp_path: Path) -> Sequence[str]:
     reference_path.write_bytes(b"ref")
     target_path.write_bytes(b"tgt")
 
-    reference_plan = _ClipPlan(
+    reference_plan = ClipPlan(
         path=reference_path,
         metadata={"label": "Reference"},
     )
-    target_plan = _ClipPlan(
+    target_plan = ClipPlan(
         path=target_path,
         metadata={"label": "Target"},
     )

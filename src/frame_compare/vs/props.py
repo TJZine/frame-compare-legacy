@@ -173,7 +173,7 @@ def _extract_frame_props(clip: Any) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], {})
 
 
-def _snapshot_frame_props(clip: Any) -> Mapping[str, Any]:
+def snapshot_frame_props(clip: Any) -> Mapping[str, Any]:
     try:
         frame = clip.get_frame(0)
     except (RuntimeError, ValueError, KeyError):
@@ -184,7 +184,7 @@ def _snapshot_frame_props(clip: Any) -> Mapping[str, Any]:
     return dict(props)
 
 
-def _props_signal_hdr(props: Mapping[str, Any]) -> bool:
+def props_signal_hdr(props: Mapping[str, Any]) -> bool:
     primaries = props.get("_Primaries") or props.get("Primaries")
     transfer = props.get("_Transfer") or props.get("Transfer")
 
@@ -242,7 +242,7 @@ def _normalise_resolved_code(value: Optional[int]) -> Optional[int]:
     return code
 
 
-def _resolve_color_metadata(
+def resolve_color_metadata(
     props: Mapping[str, Any],
 ) -> tuple[Optional[int], Optional[int], Optional[int], Optional[int]]:
     matrix = _coerce_prop(
@@ -309,12 +309,12 @@ __all__ = [
     "_normalise_property_value",
     "_value_matches",
     "_extract_frame_props",
-    "_snapshot_frame_props",
-    "_props_signal_hdr",
+    "snapshot_frame_props",
+    "props_signal_hdr",
     "_coerce_prop",
     "_first_present",
     "_normalise_resolved_code",
-    "_resolve_color_metadata",
+    "resolve_color_metadata",
     "_infer_frame_height",
     "_MATRIX_NAME_TO_CODE",
     "_PRIMARIES_NAME_TO_CODE",

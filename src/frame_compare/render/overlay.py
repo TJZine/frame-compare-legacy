@@ -25,7 +25,7 @@ __all__ = [
 
 if TYPE_CHECKING:
     from src.frame_compare import vs as vs_core
-    from src.screenshot import GeometryPlan
+    from src.frame_compare.screenshot.config import GeometryPlan
 
     TonemapInfo = vs_core.TonemapInfo
 else:  # pragma: no cover - runtime type fallback

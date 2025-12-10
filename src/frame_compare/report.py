@@ -25,7 +25,7 @@ _INVALID_LABEL_PATTERN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _CATEGORY_KEY_PATTERN = re.compile(r"[^a-z0-9]+")
 
 
-def _sanitise_label(label: str) -> str:
+def sanitise_label(label: str) -> str:
     cleaned = _INVALID_LABEL_PATTERN.sub("_", label)
     if os.name == "nt":
         cleaned = cleaned.rstrip(" .")
@@ -90,7 +90,7 @@ def _normalise_default(label: Optional[str], encodes: Sequence[EncodeEntry]) -> 
     for encode in encodes:
         if encode["label"] == stripped:
             return encode["label"]
-    sanitised = _sanitise_label(stripped)
+    sanitised = sanitise_label(stripped)
     for encode in encodes:
         if encode["safe_label"] == sanitised:
             return encode["label"]
@@ -169,7 +169,7 @@ def generate_html_report(
                     safe_label_source = embedded
         if safe_label_source is None:
             safe_label_source = label
-        safe_label = _sanitise_label(safe_label_source)
+        safe_label = sanitise_label(safe_label_source)
         source_path = plan.get("path")
         metadata = plan.get("metadata")
         entry: EncodeEntry = {

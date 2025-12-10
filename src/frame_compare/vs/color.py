@@ -14,8 +14,8 @@ from .props import (  # pyright: ignore[reportPrivateUsage]
     _apply_frame_props_dict,  # pyright: ignore[reportPrivateUsage]
     _coerce_prop,  # pyright: ignore[reportPrivateUsage]
     _infer_frame_height,  # pyright: ignore[reportPrivateUsage]
-    _props_signal_hdr,  # pyright: ignore[reportPrivateUsage]
-    _resolve_color_metadata,  # pyright: ignore[reportPrivateUsage]
+    props_signal_hdr,  # pyright: ignore[reportPrivateUsage]
+    resolve_color_metadata,  # pyright: ignore[reportPrivateUsage]
 )
 
 logger = logging.getLogger("src.frame_compare.vs.color")
@@ -125,7 +125,7 @@ def _guess_default_colourspace(
     *,
     color_cfg: "ColorConfig | None" = None,
 ) -> tuple[Optional[int], Optional[int], Optional[int], Optional[int]]:
-    if _props_signal_hdr(props):
+    if props_signal_hdr(props):
         return matrix, transfer, primaries, color_range
 
     vs_module = _get_vapoursynth_module()
@@ -430,7 +430,7 @@ def normalise_color_metadata(
     """Ensure colour metadata is usable, applying heuristics and overrides when needed."""
 
     props = dict(source_props or {})
-    matrix, transfer, primaries, color_range = _resolve_color_metadata(props)
+    matrix, transfer, primaries, color_range = resolve_color_metadata(props)
 
     overrides = _resolve_color_overrides(color_cfg, file_name)
     if "matrix" in overrides:
@@ -452,7 +452,7 @@ def normalise_color_metadata(
     range_from_override = "range" in overrides
     range_inferred = color_range is None and "range" not in overrides
 
-    hdr_detected = _props_signal_hdr(props)
+    hdr_detected = props_signal_hdr(props)
 
     matrix, transfer, primaries, color_range = _guess_default_colourspace(
         clip,

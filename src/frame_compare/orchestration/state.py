@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, MutableMapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, MutableMapping, Optional, cast
 
 from rich.console import Console
-
 from src.datatypes import AppConfig
+from src.frame_compare.analysis import FrameMetricsCacheInfo, SelectionDetail
 from src.frame_compare.cli_runtime import (
     AudioAlignmentDisplayData,
     AudioAlignmentSummary,
     CliOutputManagerProtocol,
     ClipPlan,
+    ClipRecord,
     JsonTail,
     SlowpicsTitleInputs,
+    TrimSummary,
 )
 from src.frame_compare.preflight import PreflightResult
 from src.frame_compare.result_snapshot import RunResultSnapshot
@@ -46,7 +48,6 @@ class RunEnvironment:
     legacy_requested: bool
     collected_warnings: List[str]
     report_enabled: bool
-
 
 
 @dataclass
@@ -124,6 +125,67 @@ class RunContext:
     def update_alignment(self, result: AlignmentResult) -> None:
         """Persist alignment outputs in the shared run context."""
 
+        self.plans = result.plans
+        self.alignment_summary = result.summary
+        self.alignment_display = result.display
+
+
+@dataclass
+class CoordinatorContext:
+    """
+    Comprehensive state container for the WorkflowCoordinator execution pipeline.
+    Holds all state that persists between execution phases.
+    """
+    request: RunRequest
+    dependencies: RunDependencies
+
+    # Initialization (SetupPhase)
+    env: RunEnvironment = field(init=False)
+
+    # Discovery (DiscoveryPhase)
+    # Replaces RunContext fields
+    plans: List[ClipPlan] = field(default_factory=lambda: cast(List[ClipPlan], []))
+    metadata: List[Dict[str, Any]] = field(default_factory=lambda: cast(List[Dict[str, Any]], []))
+    json_tail: JsonTail = field(default_factory=lambda: cast(JsonTail, {}))
+    layout_data: MutableMapping[str, Any] = field(default_factory=lambda: cast(MutableMapping[str, Any], {}))
+
+    # TMDB / Metadata
+    metadata_title: str | None = None
+    analyze_path: Path | None = None # Initially None
+    slowpics_title_inputs: SlowpicsTitleInputs | None = None
+    slowpics_final_title: str | None = None
+    slowpics_resolved_base: str | None = None
+    slowpics_tmdb_disclosure_line: str | None = None
+    slowpics_verbose_tmdb_tag: str | None = None
+    tmdb_notes: List[str] = field(default_factory=lambda: cast(List[str], []))
+
+    # Alignment (AlignmentPhase)
+    alignment_summary: AudioAlignmentSummary | None = None
+    alignment_display: AudioAlignmentDisplayData | None = None
+
+    # Loader (ClipLoaderPhase)
+    clip_records: List[ClipRecord] = field(default_factory=lambda: cast(List[ClipRecord], []))
+    trim_details: List[TrimSummary] = field(default_factory=lambda: cast(List[TrimSummary], []))
+    stored_props_seq: List[Optional[Dict[str, Any]]] = field(default_factory=lambda: cast(List[Optional[Dict[str, Any]]], []))
+
+    # Analysis (AnalysisPhase)
+    cache_info: FrameMetricsCacheInfo | None = None
+    frames: List[int] = field(default_factory=lambda: cast(List[int], []))
+    selection_details: Dict[int, SelectionDetail] = field(default_factory=lambda: cast(Dict[int, SelectionDetail], {}))
+
+    # Render (RenderPhase)
+    image_paths: List[str] = field(default_factory=lambda: cast(List[str], []))
+    verification_records: List[Dict[str, Any]] = field(default_factory=lambda: cast(List[Dict[str, Any]], []))
+
+    # Publish (PublishPhase)
+    slowpics_url: str | None = None
+    report_path: Path | None = None
+
+    # Result (ResultPhase)
+    result: RunResult | None = None
+
+    def update_alignment(self, result: AlignmentResult) -> None:
+        """Persist alignment outputs."""
         self.plans = result.plans
         self.alignment_summary = result.summary
         self.alignment_display = result.display

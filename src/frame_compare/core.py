@@ -22,7 +22,6 @@ import src.frame_compare.planner as _planner_module
 import src.frame_compare.preflight as _preflight_constants
 import src.frame_compare.vspreview as _vspreview_module
 import src.frame_compare.wizard as _wizard_module
-import src.screenshot as _screenshot_module
 from src import audio_alignment as _audio_alignment_module
 from src.config_loader import load_config as _load_config
 from src.frame_compare.analysis import (
@@ -103,6 +102,8 @@ from src.frame_compare.preflight import (
 from src.frame_compare.preflight import (
     prepare_preflight as _prepare_preflight,
 )
+from src.frame_compare.render.errors import ScreenshotError as _ScreenshotError
+from src.frame_compare.screenshot.orchestrator import generate_screenshots as _generate_screenshots
 from src.frame_compare.slowpics import (
     SlowpicsAPIError as _SlowpicsAPIError,
 )  # noqa: F401
@@ -124,8 +125,8 @@ ROOT_ENV_VAR: Final[str] = _preflight_constants.ROOT_ENV_VAR
 ROOT_SENTINELS: Final[tuple[str, ...]] = _preflight_constants.ROOT_SENTINELS
 resolve_workspace_root = _preflight_constants.resolve_workspace_root
 
-ScreenshotError = _screenshot_module.ScreenshotError
-generate_screenshots = _screenshot_module.generate_screenshots
+ScreenshotError = _ScreenshotError
+generate_screenshots = _generate_screenshots
 fresh_app_config = _fresh_app_config_public
 _fresh_app_config = fresh_app_config
 confirm_alignment_with_screenshots = _alignment_preview_module.confirm_alignment_with_screenshots

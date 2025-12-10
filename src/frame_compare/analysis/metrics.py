@@ -105,8 +105,8 @@ def _is_hdr_source(clip: Any) -> bool:
     """Return True when the clip's transfer characteristics indicate HDR."""
 
     try:
-        props = vs_core._snapshot_frame_props(clip)
-        _, transfer, _, _ = vs_core._resolve_color_metadata(props)
+        props = vs_core.snapshot_frame_props(clip)
+        _, transfer, _, _ = vs_core.resolve_color_metadata(props)
     except (AttributeError, ValueError, TypeError, RuntimeError):
         return False
 
@@ -157,7 +157,7 @@ def _collect_metrics_vapoursynth(
     if not isinstance(clip, vs.VideoNode):
         raise TypeError("Expected a VapourSynth clip")
 
-    props = vs_core._snapshot_frame_props(clip)
+    props = vs_core.snapshot_frame_props(clip)
     clip, props, color_tuple = vs_core.normalise_color_metadata(
         clip,
         props,

@@ -93,7 +93,7 @@ class ClipProbeSnapshot:
 
 
 @dataclass
-class _ClipPlan:
+class ClipPlan:
     """
     Internal plan describing how a source clip should be processed.
 
@@ -143,8 +143,6 @@ class _ClipPlan:
     probe_cache_key: Optional[str] = None
     probe_cache_path: Optional[Path] = None
 
-
-ClipPlan = _ClipPlan
 
 _OverrideValue = TypeVar("_OverrideValue")
 
@@ -592,7 +590,6 @@ __all__ = [
     "_AudioAlignmentDisplayData",
     "_AudioAlignmentSummary",
     "_AudioMeasurementDetail",
-    "_ClipPlan",
     "_coerce_str_mapping",
     "_color_text",
     "_ensure_audio_alignment_block",

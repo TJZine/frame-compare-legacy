@@ -1239,8 +1239,8 @@ def test_runner_handles_existing_event_loop(tmp_path: Path, monkeypatch: pytest.
     files = [media_root / "Alpha.mkv", media_root / "Beta.mkv"]
     metadata = [{"label": "Alpha"}, {"label": "Beta"}]
     plans = [
-        core_module._ClipPlan(path=files[0], metadata={"label": "Alpha"}),
-        core_module._ClipPlan(path=files[1], metadata={"label": "Beta"}),
+        core_module.ClipPlan(path=files[0], metadata={"label": "Alpha"}),
+        core_module.ClipPlan(path=files[1], metadata={"label": "Beta"}),
     ]
     plans[0].use_as_reference = True
 
@@ -1288,17 +1288,19 @@ def test_runner_handles_existing_event_loop(tmp_path: Path, monkeypatch: pytest.
         }
         return [10], {10: "Auto"}, selection_details
 
-    import src.frame_compare.orchestration.coordinator as coordinator_module
-    monkeypatch.setattr(coordinator_module, "select_frames", fake_select)
-    monkeypatch.setattr(coordinator_module, "selection_details_to_json", _selection_details_to_json)
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
+
+    monkeypatch.setattr(analysis_phase_module, "select_frames", fake_select)
+    monkeypatch.setattr(analysis_phase_module, "selection_details_to_json", _selection_details_to_json)
     monkeypatch.setattr(
-        coordinator_module,
+        analysis_phase_module,
         "probe_cached_metrics",
         lambda *_: CacheLoadResult(metrics=None, status="missing", reason=None),
     )
-    monkeypatch.setattr(coordinator_module, "selection_hash_for_config", lambda *_: "selection-hash")
-    monkeypatch.setattr(coordinator_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(coordinator_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "selection_hash_for_config", lambda *_: "selection-hash")
+    monkeypatch.setattr(analysis_phase_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "export_selection_metadata", lambda *args, **kwargs: None)
 
     def fake_generate(
         clips: Sequence[object],
@@ -1315,7 +1317,7 @@ def test_runner_handles_existing_event_loop(tmp_path: Path, monkeypatch: pytest.
         shot.write_text("data", encoding="utf-8")
         return [str(shot)]
 
-    monkeypatch.setattr(coordinator_module, "generate_screenshots", fake_generate)
+    monkeypatch.setattr(render_phase_module, "generate_screenshots", fake_generate)
 
     tmdb_calls: list[dict[str, object]] = []
 

@@ -23,7 +23,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from src.screenshot import GeometryPlan
+    from src.frame_compare.screenshot.config import GeometryPlan
 else:  # pragma: no cover - runtime fallback
     GeometryPlan = MutableMapping[str, Any]  # type: ignore[assignment,misc]
 

@@ -67,14 +67,14 @@ def normalise_vspreview_mode(raw: object) -> str:
 def format_resolution_summary(plan: Mapping[str, Any]) -> str:
     """Human-readable summary comparing cropped and final clip dimensions."""
 
-    def _format_dimensions(width: int, height: int) -> str:
+    def format_dimensions(width: int, height: int) -> str:
         return f"{int(width)} \u00D7 {int(height)}"
 
     original_w = int(plan.get("cropped_w", 0))
     original_h = int(plan.get("cropped_h", 0))
     final_w, final_h = plan.get("final", (original_w, original_h))
-    original = _format_dimensions(original_w, original_h)
-    target = _format_dimensions(int(final_w), int(final_h))
+    original = format_dimensions(original_w, original_h)
+    target = format_dimensions(int(final_w), int(final_h))
     if target == original:
         return f"{original}  (native)"
     return f"{original} \u2192 {target}  (original \u2192 target)"

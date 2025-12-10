@@ -279,13 +279,23 @@ def _patch_vs_core(monkeypatch: pytest.MonkeyPatch, attr: str, value: object) ->
     """Patch VapourSynth helpers in both the shim module and the runner module."""
 
     monkeypatch.setattr(vs_core_module, attr, value, raising=False)
-    monkeypatch.setattr(coordinator_module.vs_core, attr, value, raising=False)
 
 
 def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: object) -> None:
     """Patch shared runner dependencies exposed at the runner module level."""
 
     import src.frame_compare.cli_runtime as cli_runtime_module
+    from src.frame_compare.orchestration.phases import (
+        alignment as alignment_phase,
+        analysis as analysis_phase,
+        discovery as discovery_phase,
+        loader as loader_phase,
+        publish as publish_phase,
+        render as render_phase,
+        result as result_phase,
+        setup as setup_phase,
+    )
+
     targets = [
         frame_compare,
         core_module,
@@ -303,6 +313,14 @@ def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: obje
         setup_module,
         reporting_module,
         cli_runtime_module,
+        setup_phase,
+        discovery_phase,
+        alignment_phase,
+        loader_phase,
+        analysis_phase,
+        render_phase,
+        publish_phase,
+        result_phase,
     ]
     for target in targets:
         if target is None:

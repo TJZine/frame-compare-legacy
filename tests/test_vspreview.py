@@ -12,7 +12,7 @@ import pytest
 import frame_compare as _frame_compare  # noqa: F401  # Ensure CLI shim initialises alignment_runner.
 from src.frame_compare import alignment as alignment_package
 from src.frame_compare import vspreview as vspreview_module
-from src.frame_compare.cli_runtime import _ClipPlan
+from src.frame_compare.cli_runtime import ClipPlan
 from tests.helpers.runner_env import (
     _make_config,
     _make_json_tail_stub,
@@ -20,7 +20,7 @@ from tests.helpers.runner_env import (
 )
 
 
-def _make_summary(reference: _ClipPlan, target: _ClipPlan, tmp_path: Path) -> alignment_package.AudioAlignmentSummary:
+def _make_summary(reference: ClipPlan, target: ClipPlan, tmp_path: Path) -> alignment_package.AudioAlignmentSummary:
     """Helper constructing a minimal audio-alignment summary for VSPreview tests."""
 
     return alignment_package.AudioAlignmentSummary(
@@ -46,8 +46,8 @@ def test_render_script_includes_manual_trims(tmp_path: Path) -> None:
     cfg.audio_alignment.use_vspreview = True
     cfg.audio_alignment.vspreview_mode = "seeded"
 
-    reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"}, trim_start=2)
-    target = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"}, trim_start=5)
+    reference = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"}, trim_start=2)
+    target = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"}, trim_start=5)
     plans = [reference, target]
     summary = _make_summary(reference, target, tmp_path)
     summary.manual_trim_starts = {reference.path.name: 2, target.path.name: 5}
@@ -68,8 +68,8 @@ def test_render_script_marks_missing_frame_hint(tmp_path: Path) -> None:
     cfg = _make_config(tmp_path)
     cfg.audio_alignment.use_vspreview = True
 
-    reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Ref"})
-    target = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
+    reference = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Ref"})
+    target = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
     plans = [reference, target]
     summary = _make_summary(reference, target, tmp_path)
     summary.suggested_frames = {}
@@ -136,8 +136,8 @@ def test_launch_vspreview_uses_injected_process_runner(tmp_path: Path, monkeypat
     cfg.audio_alignment.use_vspreview = True
     cfg.runtime.vapoursynth_python_paths = ["~/vsp"]
 
-    reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
-    target = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
+    reference = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
+    target = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
     plans = [reference, target]
     summary = _make_summary(reference, target, tmp_path)
 
@@ -194,8 +194,8 @@ def test_launch_vspreview_reports_backend_reason(tmp_path: Path, monkeypatch: py
     cfg = _make_config(tmp_path)
     cfg.audio_alignment.use_vspreview = True
 
-    reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
-    target = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
+    reference = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
+    target = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
     plans = [reference, target]
     summary = _make_summary(reference, target, tmp_path)
 
@@ -238,9 +238,9 @@ def test_apply_manual_offsets_updates_json_tail(tmp_path: Path) -> None:
     reporter = _RecordingOutputManager()
     json_tail = _make_json_tail_stub()
 
-    reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"}, effective_fps=(24, 1))
-    target = _ClipPlan(path=tmp_path / "TargetA.mkv", metadata={"label": "Target A"}, effective_fps=(24, 1))
-    extra = _ClipPlan(path=tmp_path / "TargetB.mkv", metadata={"label": "Target B"}, effective_fps=(24, 1))
+    reference = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"}, effective_fps=(24, 1))
+    target = ClipPlan(path=tmp_path / "TargetA.mkv", metadata={"label": "Target A"}, effective_fps=(24, 1))
+    extra = ClipPlan(path=tmp_path / "TargetB.mkv", metadata={"label": "Target B"}, effective_fps=(24, 1))
     plans = [reference, target, extra]
 
     summary = alignment_package.AudioAlignmentSummary(
@@ -287,8 +287,8 @@ def test_apply_manual_offsets_populates_seconds_without_known_fps(tmp_path: Path
     reporter = _RecordingOutputManager()
     json_tail = _make_json_tail_stub()
 
-    reference = _ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
-    target = _ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
+    reference = ClipPlan(path=tmp_path / "Ref.mkv", metadata={"label": "Reference"})
+    target = ClipPlan(path=tmp_path / "Target.mkv", metadata={"label": "Target"})
     summary = alignment_package.AudioAlignmentSummary(
         offsets_path=tmp_path / "offsets.json",
         reference_name=reference.path.name,

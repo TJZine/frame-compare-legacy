@@ -11,7 +11,7 @@ from .env import _SOURCE_PREFERENCE, ClipInitError, _get_vapoursynth_module  # p
 from .props import (  # pyright: ignore[reportPrivateUsage]
     _apply_frame_props_dict,  # pyright: ignore[reportPrivateUsage]
     _ensure_std_namespace,  # pyright: ignore[reportPrivateUsage]
-    _snapshot_frame_props,  # pyright: ignore[reportPrivateUsage]
+    snapshot_frame_props,  # pyright: ignore[reportPrivateUsage]
 )
 
 logger = logging.getLogger("src.frame_compare.vs.source")
@@ -358,7 +358,7 @@ def init_clip(
         if source_frame_props_hint:
             source_frame_props = dict(source_frame_props_hint)
         else:
-            source_frame_props = dict(_snapshot_frame_props(clip))
+            source_frame_props = dict(snapshot_frame_props(clip))
     except (ValueError, TypeError, KeyError):
         source_frame_props = {}
     if frame_props_sink is not None:
