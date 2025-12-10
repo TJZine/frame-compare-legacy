@@ -120,6 +120,7 @@
 | `[color].use_dovi` | bool|null | `null` |
 | `[color].visualize_lut` | bool | `false` |
 | `[color].show_clipping` | bool | `false` |
+| `[color]._provided_keys` | typing.Set[str] | `[]` |
 
 ## Slow.pics and metadata automation
 

@@ -135,13 +135,14 @@ def _ensure_std_namespace(clip: Any, error: RuntimeError) -> Any:
 
 
 def _call_set_frame_prop(set_prop: Any, clip: Any, **kwargs: Any) -> Any:
+    # VapourSynth's SetFrameProps accessed via clip.std.SetFrameProps is typically
+    # a bound method that doesn't need the clip passed again. Try that first.
     try:
-        return set_prop(clip, **kwargs)
-    except TypeError as exc_first:
-        try:
-            return set_prop(**kwargs)
-        except TypeError:
-            raise exc_first from None
+        return set_prop(**kwargs)
+    except (TypeError, RuntimeError):
+        pass
+    # Fallback: some VapourSynth builds or test mocks expect clip as first arg
+    return set_prop(clip, **kwargs)
 
 
 def _normalise_property_value(value: Any) -> Any:
