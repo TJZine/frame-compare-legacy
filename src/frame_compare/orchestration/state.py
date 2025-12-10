@@ -6,6 +6,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, MutableMapping, Optional, cast
 
 from rich.console import Console
+
 from src.datatypes import AppConfig
 from src.frame_compare.analysis import FrameMetricsCacheInfo, SelectionDetail
 from src.frame_compare.cli_runtime import (

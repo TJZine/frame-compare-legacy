@@ -114,19 +114,86 @@ def _redact_webhook(url: str) -> str:
     return parsed.path or "webhook"
 
 
-def _post_direct_webhook(session: requests.Session, webhook_url: str, canonical_url: str) -> None:
+_DANGEROUS_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0", ""})
+
+
+def _is_safe_webhook_url(url: str) -> bool:
+    """Validate webhook URL: HTTPS only, no internal/reserved IPs.
+
+    Security note: This validates the literal hostname/IP only. A public domain
+    that DNS-resolves to a private IP would pass validation. This is acceptable
+    for a CLI tool where users control their own config — protecting against
+    DNS rebinding adds complexity (network calls, TOCTOU races) without
+    meaningful security benefit when the "attacker" is the user themselves.
+
+    Returns True if the URL is safe to POST to, False otherwise.
+    """
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return False
+
+    if parsed.scheme != "https":
+        return False
+
+    hostname = (parsed.hostname or "").lower()
+    if hostname in _DANGEROUS_HOSTS:
+        return False
+
+    # Block RFC1918, link-local, loopback, and reserved IP literals
+    try:
+        import ipaddress
+
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return False
+    except ValueError:
+        pass  # Not an IP literal, likely a hostname — acceptable
+
+    return True
+
+
+def _post_direct_webhook(webhook_url: str, canonical_url: str) -> None:
+    """Post the slow.pics URL to a webhook using an isolated, cookie-free request.
+
+    This function validates the webhook URL and refuses to POST to:
+    - Non-HTTPS URLs
+    - localhost / loopback addresses
+    - Private/reserved IP ranges
+
+    Args:
+        webhook_url: The user-configured webhook endpoint.
+        canonical_url: The slow.pics comparison URL to send.
+    """
+    if not _is_safe_webhook_url(webhook_url):
+        logger.warning(
+            "Webhook URL rejected (must be HTTPS and non-internal): %s",
+            _redact_webhook(webhook_url),
+        )
+        return
+
     redacted = _redact_webhook(webhook_url)
     payload = {"content": canonical_url}
     backoff = 1.0
     for attempt in range(1, 4):
+        # Use a fresh session with no cookies to prevent credential leakage
+        isolated_session = requests.Session()
         try:
-            resp = session.post(webhook_url, json=payload, timeout=10)
+            resp = isolated_session.post(
+                webhook_url,
+                json=payload,
+                timeout=10,
+                allow_redirects=False,
+                headers={"User-Agent": "frame-compare/1.0"},
+            )
             if resp.status_code < 300:
                 logger.info("Posted slow.pics URL to webhook host %s", redacted)
                 return
             message = f"HTTP {resp.status_code}"
         except requests.RequestException as exc:
             message = exc.__class__.__name__
+        finally:
+            isolated_session.close()
         logger.warning(
             "Webhook post attempt %s to %s failed: %s",
             attempt,
@@ -137,6 +204,7 @@ def _post_direct_webhook(session: requests.Session, webhook_url: str, canonical_
             time.sleep(backoff)
             backoff = min(backoff * 2, 4.0)
     logger.error("Giving up on webhook delivery to %s after %s attempts", redacted, 3)
+
 
 
 def _build_legacy_headers(session: requests.Session, encoder: Any) -> Dict[str, str]:
@@ -399,7 +467,7 @@ def _upload_comparison_legacy(
         session_pool.close()
 
     if cfg.webhook_url:
-        _post_direct_webhook(session, cfg.webhook_url, canonical_url)
+        _post_direct_webhook(cfg.webhook_url, canonical_url)
     if cfg.create_url_shortcut:
         shortcut_name = build_shortcut_filename(cfg.collection_name, canonical_url)
         shortcut_path = screen_dir / shortcut_name

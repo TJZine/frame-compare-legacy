@@ -19,13 +19,11 @@ from src.datatypes import (
 from src.frame_compare import subproc as fc_subproc
 from src.frame_compare import vs as vs_core
 from src.frame_compare.render import naming as render_naming
+from src.frame_compare.render.errors import ScreenshotError, ScreenshotWriterError
 from src.frame_compare.screenshot import orchestrator, render
 from src.frame_compare.screenshot.config import GeometryPlan
 from src.frame_compare.screenshot.naming import sanitise_label
-from src.frame_compare.render.errors import ScreenshotError, ScreenshotWriterError
 from src.frame_compare.screenshot.render import (
-    ColorDebugState,
-    ScreenshotWriterError,
     compute_requires_full_chroma,
 )
 

@@ -287,12 +287,26 @@ def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: obje
     import src.frame_compare.cli_runtime as cli_runtime_module
     from src.frame_compare.orchestration.phases import (
         alignment as alignment_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
         analysis as analysis_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
         discovery as discovery_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
         loader as loader_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
         publish as publish_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
         render as render_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
         result as result_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
         setup as setup_phase,
     )
 

@@ -76,11 +76,11 @@ REPLACEMENTS = {
 def process_file(path):
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
-    
+
     original = content
     for pattern, replacement in REPLACEMENTS.items():
         content = re.sub(pattern, replacement, content)
-    
+
     if content != original:
         print(f"Updated {path}")
         with open(path, "w", encoding="utf-8") as f:

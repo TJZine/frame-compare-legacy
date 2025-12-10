@@ -9,7 +9,7 @@ from typing import Callable, Dict, Sequence, cast
 import pytest
 
 import src.frame_compare.core as core_module
-from src.frame_compare.cli_runtime import _AudioAlignmentSummary, ClipPlan
+from src.frame_compare.cli_runtime import ClipPlan, _AudioAlignmentSummary
 
 
 @pytest.fixture

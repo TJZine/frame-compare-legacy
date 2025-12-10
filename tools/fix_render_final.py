@@ -11,7 +11,7 @@ for line in lines:
         pass # Logic handled below by just inserting before specific markers
 
     # Strategy: Insert before the first usage or distinct marker in each function.
-    
+
     if "kwargs: Dict[str, int] = {}" in line:
         # For resolve_resize_color_kwargs
         # We can just insert it here if we are sure it's the right place.
@@ -55,7 +55,7 @@ if "def resolve_resize_color_kwargs(props: Mapping[str, Any]) -> Dict[str, int]:
     )
 
 # 2. finalize_existing_rgb24
-# Search for: 
+# Search for:
 #     tonemapped_flag = props.get("_Tonemapped")
 #     is_tonemapped = tonemapped_flag is not None
 #

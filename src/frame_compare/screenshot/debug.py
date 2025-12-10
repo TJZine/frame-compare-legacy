@@ -122,7 +122,7 @@ class ColorDebugState:
     ) -> None:
         path = self.base_dir / f"{frame_idx:06d}_{stage}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         def _execute_write() -> None:
             if self._writer is None:
                 fpng_ns = getattr(self.core, "fpng", None) if self.core is not None else None
@@ -136,7 +136,7 @@ class ColorDebugState:
                         self._warned_writer = True
                     return
                 self._writer = writer
-            
+
             try:
                 _, _, _, debug_range = vs_core.resolve_color_metadata(props)
                 rgb_clip = ensure_rgb24(

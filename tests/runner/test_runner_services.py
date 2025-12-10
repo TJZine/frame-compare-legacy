@@ -14,7 +14,6 @@ from src.frame_compare import runner as runner_module
 from src.frame_compare import selection as selection_utils
 from src.frame_compare.cli_runtime import CLIAppError, CliOutputManager, ClipPlan, JsonTail
 from src.frame_compare.interfaces import PublisherIO, ReportRendererProtocol, SlowpicsClientProtocol
-from src.frame_compare.orchestration.coordinator import WorkflowCoordinator
 from src.frame_compare.services.alignment import AlignmentRequest, AlignmentResult, AlignmentWorkflow
 from src.frame_compare.services.metadata import MetadataResolver, MetadataResolveRequest, MetadataResolveResult
 from src.frame_compare.services.publishers import (
@@ -342,12 +341,12 @@ def test_publish_results_uses_services(tmp_path: Path) -> None:
         slowpics_publisher=slowpics_publisher,
     )
 
-    from src.frame_compare.orchestration.state import CoordinatorContext
     from src.frame_compare.orchestration.phases.publish import PublishPhase
+    from src.frame_compare.orchestration.state import CoordinatorContext
 
     request = runner_module.RunRequest(config_path=None, reporter=reporter)
     coord_context = CoordinatorContext(request=request, dependencies=deps)
-    
+
     # Mock env
     coord_context.env = SimpleNamespace(
         cfg=cfg,
@@ -364,7 +363,7 @@ def test_publish_results_uses_services(tmp_path: Path) -> None:
     coord_context.image_paths = ["img-a.png"]
     coord_context.frames = [1, 2]
     coord_context.selection_details = {}
-    
+
     coord_context.slowpics_title_inputs = context_old.slowpics_title_inputs
     coord_context.slowpics_final_title = context_old.slowpics_final_title
     coord_context.slowpics_resolved_base = context_old.slowpics_resolved_base

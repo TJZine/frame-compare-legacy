@@ -1,4 +1,3 @@
-import re
 
 path = "src/frame_compare/screenshot/render.py"
 with open(path, "r", encoding="utf-8") as f:
@@ -9,7 +8,7 @@ for line in lines:
     # Remove redundant metadata resolution
     if "matrix, transfer, primaries, color_range = vs_core.resolve_color_metadata(props)" in line:
         continue
-    
+
     # Remove unnecessary cast
     if "converted = cast(" in line and "point(" in line:
         # replace cast(Any, point(...)) with point(...)

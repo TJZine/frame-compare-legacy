@@ -1,5 +1,3 @@
-import os
-import re
 
 def fix_render_py():
     path = "src/frame_compare/screenshot/render.py"
@@ -8,7 +6,7 @@ def fix_render_py():
 
     # Fix missed replacements
     content = content.replace("_ColorDebugState", "ColorDebugState")
-    
+
     # Add __all__
     if "__all__" not in content:
         exports = [
@@ -17,7 +15,7 @@ def fix_render_py():
             "resolve_output_color_range", "clamp_frame_index", "resolve_source_frame_index",
             "compose_overlay_text", "save_frame_with_ffmpeg", "save_frame_with_fpng",
             "save_frame_placeholder", "get_overlay_warnings", "append_overlay_warning",
-            "set_clip_range", "apply_overlay_text", "ensure_rgb24", 
+            "set_clip_range", "apply_overlay_text", "ensure_rgb24",
             "resolve_resize_color_kwargs", "legacy_rgb24_from_clip", "finalize_existing_rgb24",
             "apply_frame_info_overlay", "copy_frame_props", "expand_limited_rgb", "restore_color_props",
             "normalise_geometry_policy", "get_subsampling", "axis_has_odd", "describe_plan_axes",
@@ -52,11 +50,11 @@ def fix_test_screenshot_py():
 
     # Fix dict args type errors
     content = content.replace(
-        'geometry_plan={"requires_full_chroma": True}', 
+        'geometry_plan={"requires_full_chroma": True}',
         'geometry_plan=cast(GeometryPlan, {"requires_full_chroma": True})'
     )
     content = content.replace(
-        'geometry_plan={"requires_full_chroma": False}', 
+        'geometry_plan={"requires_full_chroma": False}',
         'geometry_plan=cast(GeometryPlan, {"requires_full_chroma": False})'
     )
 

@@ -33,10 +33,10 @@ from src.datatypes import (
 from src.frame_compare import runner as runner_module
 from src.frame_compare.analysis import CacheLoadResult, FrameMetricsCacheInfo, SelectionDetail
 from src.frame_compare.cli_runtime import (
+    ClipPlan,
     NullCliOutputManager,
     _AudioAlignmentDisplayData,
     _AudioAlignmentSummary,
-    ClipPlan,
 )
 from src.frame_compare.orchestration.state import RunEnvironment
 from src.frame_compare.preflight import PreflightResult
@@ -718,7 +718,6 @@ def test_run_cli_surfaces_cache_recompute_reason(
         return CacheLoadResult(metrics=None, status="stale", reason=reason_code)
 
     import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
-    import src.frame_compare.orchestration.phases.render as render_phase_module
     monkeypatch.setattr(analysis_phase_module, "probe_cached_metrics", fake_probe)
 
     observed_probes: list[CacheLoadResult | None] = []
@@ -763,7 +762,6 @@ def test_run_cli_reports_missing_cache_reason(
         raise AssertionError("probe_cached_metrics should not be called when cache file is missing")
 
     import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
-    import src.frame_compare.orchestration.phases.render as render_phase_module
     monkeypatch.setattr(analysis_phase_module, "probe_cached_metrics", _probe_unused)
 
     observed_probes: list[CacheLoadResult | None] = []

@@ -3,13 +3,10 @@ from __future__ import annotations
 
 import types
 from pathlib import Path
-from typing import Any, Mapping
 
 import pytest
 from rich.console import Console
 
-import src.frame_compare.core as core_module
-import src.frame_compare.vs as vs_core_module
 from src.datatypes import AnalysisConfig, ColorConfig, ScreenshotConfig
 from src.frame_compare.analysis import CacheLoadResult, FrameMetricsCacheInfo, SelectionDetail
 from src.frame_compare.orchestration.coordinator import WorkflowCoordinator
@@ -18,9 +15,9 @@ from tests.helpers.runner_env import (
     _CliRunnerEnv,
     _make_config,
     _patch_core_helper,
-    _patch_runner_module,
     _patch_vs_core,
 )
+
 
 @pytest.fixture
 def cli_runner_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _CliRunnerEnv:
@@ -45,7 +42,7 @@ def test_workflow_coordinator_golden_master(
     cfg.overrides.change_fps = {"BBB - 01.mkv": "set"}
     cfg.overrides.trim = {"0": 5}
     cfg.overrides.trim_end = {"BBB - 01.mkv": -12}
-    
+
     cli_runner_env.reinstall(cfg)
 
     # 2. Mock Core Helpers
@@ -107,7 +104,7 @@ def test_workflow_coordinator_golden_master(
 
     import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
     monkeypatch.setattr(analysis_phase_module, "select_frames", fake_select)
-    
+
     # 5. Mock Screenshots
     def fake_generate(
         clips: list[types.SimpleNamespace],
@@ -129,14 +126,14 @@ def test_workflow_coordinator_golden_master(
 
     import src.frame_compare.orchestration.phases.render as render_phase_module
     monkeypatch.setattr(render_phase_module, "generate_screenshots", fake_generate)
-    
+
     # Mock exports
     monkeypatch.setattr(analysis_phase_module, "export_selection_metadata", lambda *args, **kwargs: None)
     monkeypatch.setattr(analysis_phase_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    
+
     import src.frame_compare.orchestration.phases.result as result_phase_module
     monkeypatch.setattr(result_phase_module, "write_snapshot", lambda *args, **kwargs: None)
-    
+
     # Mock Reporting
     monkeypatch.setattr(result_phase_module, "render_run_result", lambda *args, **kwargs: None)
     monkeypatch.setattr(result_phase_module, "resolve_cli_version", lambda: "0.0.0-test")
@@ -151,33 +148,33 @@ def test_workflow_coordinator_golden_master(
     result = coordinator.execute(request)
 
     # 7. Assertions (The "Golden" state)
-    
+
     # Basic Integrity
     assert result.root == cli_runner_env.media_root
     assert len(result.files) == 2
     assert result.frames == [10, 20]
     assert len(result.image_paths) == 4 # 2 frames * 2 clips
-    
+
     # JSON Tail Structure
     assert result.json_tail is not None
     tail = result.json_tail
-    
+
     # Clips
     assert len(tail["clips"]) == 2
     assert tail["clips"][0]["label"] == "AAA Short"
     assert tail["clips"][1]["label"] == "BBB Short"
-    
+
     # Trims
     assert tail["trims"]["per_clip"]["AAA Short"]["lead_f"] == 5
     assert tail["trims"]["per_clip"]["BBB Short"]["trail_f"] == 12
-    
+
     # Analysis
     assert tail["analysis"]["output_frame_count"] == 2
     assert tail["analysis"]["output_frames"] == [10, 20]
-    
+
     # Verify Layout Data (Indirectly via what's in json_tail as they are synced in the coordinator)
     # The actual layout_data is harder to inspect on the result object as it is not returned directly,
     # but the RunResult has json_tail which is populated from it.
-    
+
     # Verify context propagation (implied by success)
     assert result.out_dir == cli_runner_env.media_root / "screens"

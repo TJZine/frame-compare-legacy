@@ -25,11 +25,24 @@ _ALLOWED_COMPARE_OPS: Tuple[type[ast.cmpop], ...] = (
     ast.GtE,
 )
 
+# Expression security limits to prevent DoS via resource exhaustion
+_MAX_AST_NODES = 50
+_MAX_NUMERIC_CONSTANT = 10**9
+_MAX_STRING_LENGTH = 1000
+
+
+def _count_nodes(node: ast.AST) -> int:
+    """Count total AST nodes for complexity budget."""
+    return 1 + sum(_count_nodes(child) for child in ast.iter_child_nodes(node))
+
 
 def validate_safe_expression(
     node: ast.AST, *, allowed_calls: Mapping[str, Any], allowed_names: Mapping[str, Any]
 ) -> None:
-    """Ensure the parsed AST only contains whitelisted operations."""
+    """Ensure the parsed AST only contains whitelisted operations and bounded values."""
+    node_count = _count_nodes(node)
+    if node_count > _MAX_AST_NODES:
+        raise ValueError(f"Expression too complex: {node_count} nodes exceeds limit of {_MAX_AST_NODES}")
 
     def _check(inner: ast.AST) -> None:
         if isinstance(inner, ast.Expression):
@@ -80,7 +93,15 @@ def validate_safe_expression(
                 raise ValueError(f"Name '{inner.id}' is not allowed in expressions")
             return
         if isinstance(inner, ast.Constant):
-            if isinstance(inner.value, (int, float, str, bool)) or inner.value is None:
+            if isinstance(inner.value, int) and not isinstance(inner.value, bool):
+                if abs(inner.value) > _MAX_NUMERIC_CONSTANT:
+                    raise ValueError(f"Numeric constant too large: {inner.value}")
+                return
+            if isinstance(inner.value, str):
+                if len(inner.value) > _MAX_STRING_LENGTH:
+                    raise ValueError(f"String constant too long: {len(inner.value)} characters")
+                return
+            if isinstance(inner.value, (float, bool)) or inner.value is None:
                 return
             raise ValueError("Unsupported constant value")
         if isinstance(inner, (ast.List, ast.Tuple)):

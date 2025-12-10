@@ -489,7 +489,7 @@ class CliLayoutRenderer:
 
     def update_progress_state(
         self,
-        progress_id: str, 
+        progress_id: str,
         *,
         state: Mapping[str, Any]
     ) -> None:
@@ -697,7 +697,7 @@ class CliLayoutRenderer:
 
     def _resolve_section_accent(
         self,
-        section: Mapping[str, Any], 
+        section: Mapping[str, Any],
         badge: Optional[str] = None
     ) -> Optional[str]:
         """
@@ -840,8 +840,8 @@ class CliLayoutRenderer:
 
     def _evaluate_highlight_rule(
         self,
-        rule: HighlightRule, 
-        value: Any, 
+        rule: HighlightRule,
+        value: Any,
         context: LayoutContext
     ) -> Optional[str]:
         """
@@ -889,8 +889,8 @@ class CliLayoutRenderer:
 
     def _pick_highlight(
         self,
-        path: str, 
-        value: Any, 
+        path: str,
+        value: Any,
         context: LayoutContext
     ) -> Optional[str]:
         """
@@ -1023,7 +1023,7 @@ class CliLayoutRenderer:
 
     def apply_path_ellipsis(
         self,
-        value: Optional[str], 
+        value: Optional[str],
         *,
         width: Optional[int] = None
     ) -> str:
@@ -1420,8 +1420,8 @@ class CliLayoutRenderer:
 
     def render_template(
         self,
-        template: str, 
-        values: Mapping[str, Any], 
+        template: str,
+        values: Mapping[str, Any],
         flags: Mapping[str, Any]
     ) -> str:
         """
@@ -2198,8 +2198,8 @@ class CliLayoutRenderer:
 
     def render_progress_column_label(
         self,
-        progress_id: str, 
-        template: str, 
+        progress_id: str,
+        template: str,
         task: Task
     ) -> str:
         """
@@ -2230,7 +2230,7 @@ class CliLayoutRenderer:
 
     def create_progress(
         self,
-        progress_id: str, 
+        progress_id: str,
         *,
         transient: bool = False
     ) -> Progress:
@@ -2301,8 +2301,8 @@ class _TemplateProgressColumn(ProgressColumn):
 
     def __init__(
         self,
-        renderer: CliLayoutRenderer, 
-        progress_id: str, 
+        renderer: CliLayoutRenderer,
+        progress_id: str,
         template: str
     ) -> None:
         """
