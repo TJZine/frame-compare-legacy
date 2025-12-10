@@ -60,6 +60,7 @@ from tests.helpers.runner_env import (
     _patch_vs_core,
     _RecordingOutputManager,
     _selection_details_to_json,
+    install_tty_stdin,
 )
 
 pytestmark = pytest.mark.usefixtures("runner_vs_core_stub", "dummy_progress")  # type: ignore[attr-defined]
@@ -270,11 +271,7 @@ def test_audio_alignment_prompt_reuse_decline(tmp_path: Path, monkeypatch: pytes
     _patch_audio_alignment(monkeypatch, "measure_offsets", _fail_measure)
     _patch_audio_alignment(monkeypatch, "update_offsets_file", _fail_update)
 
-    class _TTY:
-        def isatty(self) -> bool:
-            return True
-
-    monkeypatch.setattr(sys, "stdin", _TTY())
+    install_tty_stdin(monkeypatch)
 
     confirm_calls: dict[str, int] = {"count": 0}
 
@@ -357,11 +354,7 @@ def test_audio_alignment_prompt_reuse_hydrates_suggestions(
     _patch_audio_alignment(monkeypatch, "measure_offsets", _fail_measure)
     _patch_audio_alignment(monkeypatch, "update_offsets_file", _fail_update)
 
-    class _TTY:
-        def isatty(self) -> bool:
-            return True
-
-    monkeypatch.setattr(sys, "stdin", _TTY())
+    install_tty_stdin(monkeypatch)
 
     confirm_calls: dict[str, int] = {"count": 0}
 
@@ -471,11 +464,7 @@ def test_audio_alignment_prompt_reuse_affirm(tmp_path: Path, monkeypatch: pytest
 
     _patch_audio_alignment(monkeypatch, "update_offsets_file", _fake_update)
 
-    class _TTY:
-        def isatty(self) -> bool:
-            return True
-
-    monkeypatch.setattr(sys, "stdin", _TTY())
+    install_tty_stdin(monkeypatch)
 
     def _confirm_true(*_args: object, **_kwargs: object) -> bool:
         return True

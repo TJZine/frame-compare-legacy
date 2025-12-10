@@ -13,6 +13,7 @@ from tests.helpers.runner_env import (
     _make_json_tail_stub,
     _RecordingOutputManager,
     install_dummy_progress,
+    install_tty_stdin,
     install_vs_core_stub,
     install_vspreview_presence,
     install_which_map,
@@ -88,3 +89,13 @@ def which_map(monkeypatch: pytest.MonkeyPatch) -> Callable[[set[str] | None], No
         install_which_map(monkeypatch, missing=missing)
 
     return _apply
+
+
+@pytest.fixture
+def tty_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make sys.stdin appear as a TTY for interactive prompt tests.
+
+    Use this fixture for tests that verify confirmation prompts, offset reuse
+    dialogs, or any other interactive CLI behavior that requires TTY detection.
+    """
+    install_tty_stdin(monkeypatch)

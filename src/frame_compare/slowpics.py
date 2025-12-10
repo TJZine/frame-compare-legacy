@@ -373,114 +373,116 @@ def _upload_comparison_legacy(
         upload_plan.append(per_frame_paths)
 
     session = session_factory()
-    assert encoder_cls is not None
-    encoder = encoder_cls(fields, str(uuid.uuid4()))
-    headers = _build_legacy_headers(session, encoder)
-    response = session.post(
-        "https://slow.pics/upload/comparison",
-        data=encoder,
-        headers=headers,
-        timeout=(_CONNECT_TIMEOUT_SECONDS, 30.0),
-    )
-    _raise_for_status(response, "Legacy collection creation")
     try:
-        comp_json = response.json()
-    except ValueError as exc:
-        raise SlowpicsAPIError("Invalid JSON response returned by slow.pics") from exc
-
-    collection_uuid = comp_json.get("collectionUuid")
-    key = comp_json.get("key")
-    if not key:
-        raise SlowpicsAPIError("Missing collection key in slow.pics response")
-    canonical_url = f"https://slow.pics/c/{key}"
-    images_raw = comp_json.get("images")
-    if not isinstance(images_raw, list):
-        raise SlowpicsAPIError("Slow.pics response missing image identifiers")
-    images_raw_list = cast(List[object], images_raw)
-    image_groups: List[List[str]] = []
-    for group_index, image_ids_raw in enumerate(images_raw_list):
-        if not isinstance(image_ids_raw, list):
-            raise SlowpicsAPIError(f"Slow.pics response malformed for comparison {group_index}")
-        normalized_ids: List[str] = []
-        image_ids_list = cast(List[object], image_ids_raw)
-        for image_id in image_ids_list:
-            if not isinstance(image_id, str):
-                raise SlowpicsAPIError("Slow.pics image identifiers must be strings")
-            normalized_ids.append(image_id)
-        image_groups.append(normalized_ids)
-    if len(image_groups) != len(upload_plan):
-        raise SlowpicsAPIError("Unexpected slow.pics response structure for comparisons")
-
-    jobs: List[tuple[Path, str]] = []
-    for per_frame_paths, image_ids in zip(upload_plan, image_groups, strict=False):
-        if len(image_ids) != len(per_frame_paths):
-            raise SlowpicsAPIError("Slow.pics returned mismatched image identifiers")
-        jobs.extend(zip(per_frame_paths, image_ids, strict=False))
-
-    worker_count = max_workers if max_workers is not None else _DEFAULT_UPLOAD_CONCURRENCY
-    worker_count = max(1, min(worker_count, len(jobs) or 1))
-
-    session_pool = _SessionPool(session_factory, worker_count)
-    try:
-        def _upload_single(path: Path, image_uuid: str) -> None:
-            file_size = path.stat().st_size
-            timeout = _compute_image_upload_timeout(cfg, file_size)
-            with ExitStack() as stack:
-                file_handle = stack.enter_context(path.open("rb"))
-                upload_fields = {
-                    "collectionUuid": collection_uuid,
-                    "imageUuid": image_uuid,
-                    "file": (path.name, file_handle, "image/png"),
-                    "browserId": browser_id,
-                }
-                upload_encoder = encoder_cls(upload_fields, str(uuid.uuid4()))
-                with session_pool.acquire() as local_session:
-                    upload_headers = _build_legacy_headers(local_session, upload_encoder)
-                    upload_resp = local_session.post(
-                        "https://slow.pics/upload/image",
-                        data=upload_encoder,
-                        headers=upload_headers,
-                        timeout=timeout,
-                    )
-            _raise_for_status(upload_resp, f"Upload frame {path.name}")
-            if getattr(upload_resp, "content", b""):
-                text = upload_resp.content.decode("utf-8", "ignore").strip()
-                if text and text.upper() != "OK":
-                    raise SlowpicsAPIError(f"Unexpected slow.pics response: {text}")
-            if progress_callback is not None:
-                progress_callback(1)
-
-        if worker_count == 1:
-            for path, image_uuid in jobs:
-                _upload_single(path, image_uuid)
-        else:
-            with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                futures = [executor.submit(_upload_single, path, image_uuid) for path, image_uuid in jobs]
-                try:
-                    for future in as_completed(futures):
-                        future.result()
-                except Exception:  # noqa: BLE001
-                    for future in futures:
-                        future.cancel()
-                    raise
-    finally:
-        session_pool.close()
-
-    if cfg.webhook_url:
-        _post_direct_webhook(cfg.webhook_url, canonical_url)
-    if cfg.create_url_shortcut:
-        shortcut_name = build_shortcut_filename(cfg.collection_name, canonical_url)
-        shortcut_path = screen_dir / shortcut_name
+        assert encoder_cls is not None
+        encoder = encoder_cls(fields, str(uuid.uuid4()))
+        headers = _build_legacy_headers(session, encoder)
+        response = session.post(
+            "https://slow.pics/upload/comparison",
+            data=encoder,
+            headers=headers,
+            timeout=(_CONNECT_TIMEOUT_SECONDS, 30.0),
+        )
+        _raise_for_status(response, "Legacy collection creation")
         try:
-            shortcut_path.write_text(f"[InternetShortcut]\nURL={canonical_url}\n", encoding="utf-8")
-            logger.info("Saved slow.pics shortcut: %s", shortcut_path)
-        except OSError as exc:
-            logger.warning(
-                "Failed to write slow.pics shortcut at %s: %s",
-                shortcut_path,
-                exc,
-            )
-    session.close()
+            comp_json = response.json()
+        except ValueError as exc:
+            raise SlowpicsAPIError("Invalid JSON response returned by slow.pics") from exc
+
+        collection_uuid = comp_json.get("collectionUuid")
+        key = comp_json.get("key")
+        if not key:
+            raise SlowpicsAPIError("Missing collection key in slow.pics response")
+        canonical_url = f"https://slow.pics/c/{key}"
+        images_raw = comp_json.get("images")
+        if not isinstance(images_raw, list):
+            raise SlowpicsAPIError("Slow.pics response missing image identifiers")
+        images_raw_list = cast(List[object], images_raw)
+        image_groups: List[List[str]] = []
+        for group_index, image_ids_raw in enumerate(images_raw_list):
+            if not isinstance(image_ids_raw, list):
+                raise SlowpicsAPIError(f"Slow.pics response malformed for comparison {group_index}")
+            normalized_ids: List[str] = []
+            image_ids_list = cast(List[object], image_ids_raw)
+            for image_id in image_ids_list:
+                if not isinstance(image_id, str):
+                    raise SlowpicsAPIError("Slow.pics image identifiers must be strings")
+                normalized_ids.append(image_id)
+            image_groups.append(normalized_ids)
+        if len(image_groups) != len(upload_plan):
+            raise SlowpicsAPIError("Unexpected slow.pics response structure for comparisons")
+
+        jobs: List[tuple[Path, str]] = []
+        for per_frame_paths, image_ids in zip(upload_plan, image_groups, strict=False):
+            if len(image_ids) != len(per_frame_paths):
+                raise SlowpicsAPIError("Slow.pics returned mismatched image identifiers")
+            jobs.extend(zip(per_frame_paths, image_ids, strict=False))
+
+        worker_count = max_workers if max_workers is not None else _DEFAULT_UPLOAD_CONCURRENCY
+        worker_count = max(1, min(worker_count, len(jobs) or 1))
+
+        session_pool = _SessionPool(session_factory, worker_count)
+        try:
+            def _upload_single(path: Path, image_uuid: str) -> None:
+                file_size = path.stat().st_size
+                timeout = _compute_image_upload_timeout(cfg, file_size)
+                with ExitStack() as stack:
+                    file_handle = stack.enter_context(path.open("rb"))
+                    upload_fields = {
+                        "collectionUuid": collection_uuid,
+                        "imageUuid": image_uuid,
+                        "file": (path.name, file_handle, "image/png"),
+                        "browserId": browser_id,
+                    }
+                    upload_encoder = encoder_cls(upload_fields, str(uuid.uuid4()))
+                    with session_pool.acquire() as local_session:
+                        upload_headers = _build_legacy_headers(local_session, upload_encoder)
+                        upload_resp = local_session.post(
+                            "https://slow.pics/upload/image",
+                            data=upload_encoder,
+                            headers=upload_headers,
+                            timeout=timeout,
+                        )
+                _raise_for_status(upload_resp, f"Upload frame {path.name}")
+                if getattr(upload_resp, "content", b""):
+                    text = upload_resp.content.decode("utf-8", "ignore").strip()
+                    if text and text.upper() != "OK":
+                        raise SlowpicsAPIError(f"Unexpected slow.pics response: {text}")
+                if progress_callback is not None:
+                    progress_callback(1)
+
+            if worker_count == 1:
+                for path, image_uuid in jobs:
+                    _upload_single(path, image_uuid)
+            else:
+                with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                    futures = [executor.submit(_upload_single, path, image_uuid) for path, image_uuid in jobs]
+                    try:
+                        for future in as_completed(futures):
+                            future.result()
+                    except Exception:  # noqa: BLE001
+                        for future in futures:
+                            future.cancel()
+                        raise
+        finally:
+            session_pool.close()
+
+        if cfg.webhook_url:
+            _post_direct_webhook(cfg.webhook_url, canonical_url)
+        if cfg.create_url_shortcut:
+            shortcut_name = build_shortcut_filename(cfg.collection_name, canonical_url)
+            shortcut_path = screen_dir / shortcut_name
+            try:
+                shortcut_path.write_text(f"[InternetShortcut]\nURL={canonical_url}\n", encoding="utf-8")
+                logger.info("Saved slow.pics shortcut: %s", shortcut_path)
+            except OSError as exc:
+                logger.warning(
+                    "Failed to write slow.pics shortcut at %s: %s",
+                    shortcut_path,
+                    exc,
+                )
+    finally:
+        session.close()
     return canonical_url
 
 

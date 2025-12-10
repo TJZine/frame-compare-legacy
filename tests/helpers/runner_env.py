@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import types
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -77,6 +78,8 @@ __all__ = [
     "_selection_details_to_json",
     "install_vs_core_stub",
     "install_dummy_progress",
+    "install_tty_stdin",
+    "FakeTTY",
     "_format_vspreview_manual_command",
     "_VSPREVIEW_WINDOWS_INSTALL",
     "_VSPREVIEW_POSIX_INSTALL",
@@ -85,6 +88,22 @@ __all__ = [
     "install_which_map",
     "MockSetupService",
 ]
+
+
+class FakeTTY:
+    """Stub for sys.stdin that reports as a TTY.
+
+    Used by tests that verify interactive prompt behavior (e.g., audio alignment
+    offset confirmation) without requiring an actual terminal.
+    """
+
+    def isatty(self) -> bool:
+        return True
+
+
+def install_tty_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make sys.stdin appear as a TTY for interactive prompt tests."""
+    monkeypatch.setattr(sys, "stdin", FakeTTY())
 
 
 class MockSetupService:

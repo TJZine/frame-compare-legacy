@@ -68,7 +68,53 @@ def _prepare_fake_vapoursynth_clip(
     color_family: str = "YUV",
     format_name: str | None = None,
 ) -> tuple[Any, Any, list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Install a lightweight VapourSynth stub and return a synthetic clip and call logs."""
+    """VapourSynth Test Stub Factory.
+
+    VapourSynth is a C extension that requires system-level installation (Windows/Linux).
+    On macOS dev environments without the native runtime, this factory creates a complete
+    mock of the vapoursynth module for testing screenshot geometry, crop/pad calculations,
+    and color processing without requiring the real VapourSynth installation.
+
+    Architecture:
+        - _FakeClip: Simulates vs.VideoNode with width, height, format, props, and std
+        - _FakeFormat: Holds color_family, bits_per_sample, subsampling_w/h
+        - _FakeStd: Simulates core.std (CropRel, AddBorders, SetFrameProps, Levels)
+        - _FakeResize: Simulates core.resize (Point, Spline36)
+        - _FakeFpng: Simulates core.fpng.Write for PNG output
+
+    The stub records all calls to enable behavior verification in tests:
+        - writer_calls: PNG write operations with kwargs and props
+        - resize_calls: Resolution change operations
+        - levels_calls: Gamma/levels adjustment operations
+
+    Args:
+        monkeypatch: pytest fixture for patching sys.modules
+        width: Initial clip width in pixels
+        height: Initial clip height in pixels
+        subsampling_w: Chroma horizontal subsampling (0=4:4:4, 1=4:2:2/4:2:0)
+        subsampling_h: Chroma vertical subsampling (0=4:4:4/4:2:2, 1=4:2:0)
+        bits_per_sample: Bit depth (8, 10, 12, 16)
+        color_family: "YUV" or "RGB"
+        format_name: Optional format string (e.g., "YUV420P8")
+
+    Returns:
+        tuple of (clip, fake_vs, writer_calls, resize_calls, levels_calls)
+
+    Usage::
+
+        clip, fake_vs, writer_calls, resize_calls, levels_calls = \\
+            _prepare_fake_vapoursynth_clip(
+                monkeypatch,
+                width=1920,
+                height=1080,
+                subsampling_w=1,
+                subsampling_h=1,
+                bits_per_sample=8,
+            )
+        # ... run code that uses vapoursynth ...
+        assert len(writer_calls) == 1
+        assert writer_calls[0]["props"]["_ColorRange"] == 1
+    """
 
     writer_calls: list[dict[str, Any]] = []
     resize_calls: list[dict[str, Any]] = []

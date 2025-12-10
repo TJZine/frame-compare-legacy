@@ -248,6 +248,10 @@ def _extract_audio(
             text=True,
         )
     except subprocess.CalledProcessError as exc:  # pragma: no cover - data dependent
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
         stderr = exc.stderr.strip() if isinstance(exc.stderr, str) else ""
         detail = f": {stderr}" if stderr else ""
         raise AudioAlignmentError(
