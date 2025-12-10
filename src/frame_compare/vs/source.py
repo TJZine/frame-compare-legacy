@@ -349,8 +349,6 @@ def init_clip(
             cache_root,
             indexing_notifier=indexing_notifier,
         )
-    except ClipInitError:
-        raise
     except (OSError, RuntimeError, ValueError) as exc:
         raise ClipInitError(f"Failed to open clip '{path}': {exc}") from exc
 

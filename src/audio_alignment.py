@@ -313,8 +313,6 @@ def _onset_envelope(
                 hop_length=hop_length,
                 center=True,
             )
-    except AudioAlignmentError:
-        raise
     except RuntimeError as exc:  # pragma: no cover - optional dependency runtime
         message = (
             "Audio alignment failed during onset envelope calculation because an optional "

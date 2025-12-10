@@ -19,7 +19,7 @@ from src.datatypes import (
     ScreenshotConfig,
 )
 from src.frame_compare import vs as vs_core
-from src.frame_compare.render.errors import ScreenshotError, ScreenshotWriterError
+from src.frame_compare.render.errors import ScreenshotError
 
 from . import debug, helpers, naming, render
 
@@ -374,8 +374,6 @@ def generate_screenshots(
                         overlays_allowed=overlays_allowed_default,
                         expand_to_full=expand_to_full,
                     )
-            except ScreenshotWriterError:
-                raise
             except Exception as exc:
                 message = (
                     f"[RENDER] Falling back to placeholder for frame {frame_idx} of {file_path}: {exc}"
