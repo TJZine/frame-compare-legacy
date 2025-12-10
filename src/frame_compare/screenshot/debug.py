@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import (
     Any,
@@ -51,6 +52,7 @@ class ColorDebugState:
             else None
         )
         self.color_tuple = artifacts.color_tuple if artifacts is not None else None
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ColorDebug")
 
     def capture_stage(
         self,
@@ -120,26 +122,38 @@ class ColorDebugState:
     ) -> None:
         path = self.base_dir / f"{frame_idx:06d}_{stage}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
-        if self._writer is None:
-            fpng_ns = getattr(self.core, "fpng", None) if self.core is not None else None
-            writer = getattr(fpng_ns, "Write", None) if fpng_ns is not None else None
-            if not callable(writer):
-                if not self._warned_writer:
-                    self._logger.warning(
-                        "Colour debug unable to emit PNGs for %s (fpng.Write unavailable)",
-                        self.label,
-                    )
-                    self._warned_writer = True
-                return
-            self._writer = writer
-        _, _, _, debug_range = vs_core.resolve_color_metadata(props)
-        rgb_clip = ensure_rgb24(
-            self.core,
-            clip,
-            frame_idx,
-            source_props=props,
-            rgb_dither=self._rgb_dither,
-            target_range=int(debug_range) if debug_range is not None else None,
-        )
-        job = self._writer(rgb_clip, str(path), compression=self._compression_value, overwrite=True)
-        job.get_frame(frame_idx)
+        
+        def _execute_write() -> None:
+            if self._writer is None:
+                fpng_ns = getattr(self.core, "fpng", None) if self.core is not None else None
+                writer = getattr(fpng_ns, "Write", None) if fpng_ns is not None else None
+                if not callable(writer):
+                    if not self._warned_writer:
+                        self._logger.warning(
+                            "Colour debug unable to emit PNGs for %s (fpng.Write unavailable)",
+                            self.label,
+                        )
+                        self._warned_writer = True
+                    return
+                self._writer = writer
+            
+            try:
+                _, _, _, debug_range = vs_core.resolve_color_metadata(props)
+                rgb_clip = ensure_rgb24(
+                    self.core,
+                    clip,
+                    frame_idx,
+                    source_props=props,
+                    rgb_dither=self._rgb_dither,
+                    target_range=int(debug_range) if debug_range is not None else None,
+                )
+                job = self._writer(rgb_clip, str(path), compression=self._compression_value, overwrite=True)
+                job.get_frame(frame_idx)
+            except Exception as e:
+                self._logger.warning(f"Failed to write debug frame: {e}")
+
+        self._executor.submit(_execute_write)
+
+    def close(self) -> None:
+        """Shutdown the internal executor."""
+        self._executor.shutdown(wait=False)

@@ -389,6 +389,9 @@ def generate_screenshots(
             if progress_callback is not None:
                 progress_callback(1)
 
+        if debug_state is not None:
+            debug_state.close()
+
         if warnings_sink is not None:
             warnings_sink.extend(render.get_overlay_warnings(overlay_state))
 

@@ -25,7 +25,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.progress import Progress, ProgressColumn
 
-from src.frame_compare.cli_layout import CliLayoutError, CliLayoutRenderer, load_cli_layout
+from src.frame_compare.layout import CliLayoutError, CliLayoutRenderer, load_cli_layout
 from src.frame_compare.layout_utils import (
     color_text as _color_text,
 )

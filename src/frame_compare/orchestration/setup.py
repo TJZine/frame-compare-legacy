@@ -102,6 +102,8 @@ def prepare_run_environment(request: RunRequest) -> RunEnvironment:
         getattr(request.impl_module, "__name__", "runner") if request.impl_module else "runner"
     )
 
+    layout_path = module_file.with_name("cli_layout.v1.json")
+
     preflight = preflight_utils.prepare_preflight(
         cli_root=root_override,
         config_override=config_path,

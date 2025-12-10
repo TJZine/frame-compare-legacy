@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+- restore CLI run reporting: fix `frame_compare.run_cli` to pass `report_enable_override` correctly and parse `[[role]]...[[/]]` layout spans with the proper closing token so Rich markup renders cleanly without leaking markers
+
 ## [0.0.14](https://github.com/TJZine/frame-compare/compare/frame-compare-v0.0.13...frame-compare-v0.0.14) (2025-11-24)
 
 

@@ -1,44 +1,49 @@
-"""Data-driven CLI layout rendering utilities."""
+"Data-driven CLI layout rendering utilities."
 from __future__ import annotations
 
-import ast
 import json
-import os
 import re
 import shutil
-import sys
 import textwrap
 from dataclasses import dataclass, field
 from itertools import zip_longest
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, SupportsInt, Tuple, cast
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    SupportsInt,
+    Tuple,
+    cast,
+)
 
 from rich.console import Console
-from rich.progress import BarColumn, Progress, ProgressColumn, SpinnerColumn, Task, TextColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    ProgressColumn,
+    SpinnerColumn,
+    Task,
+    TextColumn,
+)
+
+from . import engine, terminal
+
+# Re-export definitions used by renderer
+AnsiColorMapper = terminal.AnsiColorMapper
+ANSI_ESCAPE_RE = terminal.ANSI_ESCAPE_RE
+ANSI_RESET = terminal.ANSI_RESET
+COLOR_BLIND_OVERRIDES = terminal.COLOR_BLIND_OVERRIDES
 
 
 class CliLayoutError(RuntimeError):
     """Raised when the CLI layout specification is invalid."""
 
-
-# Regular expression used to identify key tokens.
-_KEY_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
-_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-
-_ANSI_RESET = "\x1b[0m"
-
-_SAFE_FUNCTION_TOKENS = {"abs", "min", "max"}
-
-_COLOR_BLIND_OVERRIDES: Dict[str, str] = {
-    "bool_true": "cyan",
-    "bool_false": "orange",
-    "number_ok": "cyan",
-    "number_warn": "orange",
-    "number_bad": "purple",
-    "success": "cyan",
-    "warn": "orange",
-    "error": "purple",
-}
 
 _SECTION_ACCENT_PATTERNS: Tuple[Tuple[str, str], ...] = (
     ("PREPARE", "accent_prepare"),
@@ -47,308 +52,6 @@ _SECTION_ACCENT_PATTERNS: Tuple[Tuple[str, str], ...] = (
     ("PUBLISH", "accent_publish"),
 )
 
-
-_ALLOWED_BOOL_OPS: Tuple[type[ast.boolop], ...] = (ast.And, ast.Or)
-_ALLOWED_BIN_OPS: Tuple[type[ast.operator], ...] = (
-    ast.Add,
-    ast.Sub,
-    ast.Mult,
-    ast.Div,
-    ast.Mod,
-    ast.FloorDiv,
-)
-_ALLOWED_UNARY_OPS: Tuple[type[ast.unaryop], ...] = (ast.Not, ast.UAdd, ast.USub)
-_ALLOWED_COMPARE_OPS: Tuple[type[ast.cmpop], ...] = (
-    ast.Eq,
-    ast.NotEq,
-    ast.Lt,
-    ast.LtE,
-    ast.Gt,
-    ast.GtE,
-)
-
-
-def _validate_safe_expression(node: ast.AST, *, allowed_calls: Mapping[str, Any], allowed_names: Mapping[str, Any]) -> None:
-    """Ensure the parsed AST only contains whitelisted operations."""
-
-    def _check(inner: ast.AST) -> None:
-        if isinstance(inner, ast.Expression):
-            _check(inner.body)
-            return
-        if isinstance(inner, ast.BoolOp):
-            if not isinstance(inner.op, _ALLOWED_BOOL_OPS):
-                raise ValueError("Boolean operation not allowed")
-            for value in inner.values:
-                _check(value)
-            return
-        if isinstance(inner, ast.BinOp):
-            if not isinstance(inner.op, _ALLOWED_BIN_OPS):
-                raise ValueError("Binary operation not allowed")
-            _check(inner.left)
-            _check(inner.right)
-            return
-        if isinstance(inner, ast.UnaryOp):
-            if not isinstance(inner.op, _ALLOWED_UNARY_OPS):
-                raise ValueError("Unary operation not allowed")
-            _check(inner.operand)
-            return
-        if isinstance(inner, ast.Compare):
-            for op in inner.ops:
-                if not isinstance(op, _ALLOWED_COMPARE_OPS):
-                    raise ValueError("Comparison not allowed")
-            _check(inner.left)
-            for comparator in inner.comparators:
-                _check(comparator)
-            return
-        if isinstance(inner, ast.IfExp):
-            _check(inner.test)
-            _check(inner.body)
-            _check(inner.orelse)
-            return
-        if isinstance(inner, ast.Call):
-            if not isinstance(inner.func, ast.Name):
-                raise ValueError("Only direct function calls are allowed")
-            if inner.func.id not in allowed_calls:
-                raise ValueError(f"Call to '{inner.func.id}' not permitted")
-            if inner.keywords:
-                raise ValueError("Keyword arguments are not allowed")
-            for arg in inner.args:
-                _check(arg)
-            return
-        if isinstance(inner, ast.Name):
-            if inner.id not in allowed_names:
-                raise ValueError(f"Name '{inner.id}' is not allowed in expressions")
-            return
-        if isinstance(inner, ast.Constant):
-            if isinstance(inner.value, (int, float, str, bool)) or inner.value is None:
-                return
-            raise ValueError("Unsupported constant value")
-        if isinstance(inner, (ast.List, ast.Tuple)):
-            for element in inner.elts:
-                _check(element)
-            return
-        raise ValueError(f"Unsupported expression element: {ast.dump(inner, include_attributes=False)}")
-
-    _check(node)
-
-
-class _AnsiColorMapper:
-    """Translate theme color tokens into ANSI escape sequences."""
-
-    _TOKEN_CODES_16 = {
-        "cyan": 36,
-        "blue": 34,
-        "green": 32,
-        "yellow": 33,
-        "orange": 33,
-        "red": 31,
-        "grey": 37,
-        "gray": 37,
-        "white": 37,
-        "black": 30,
-        "magenta": 35,
-        "purple": 35,
-    }
-
-    _TOKEN_CODES_256 = {
-        "cyan": 51,
-        "blue": 75,
-        "green": 84,
-        "yellow": 184,
-        "orange": 214,
-        "red": 203,
-        "grey": 240,
-        "gray": 240,
-        "white": 15,
-        "black": 0,
-        "magenta": 201,
-        "purple": 177,
-    }
-
-    def __init__(self, *, no_color: bool) -> None:
-        """
-        Initialize the color mapper and determine the terminal color capability.
-
-        Determines whether color output is disabled by combining the explicit `no_color` flag with the `NO_COLOR` environment variable, records that state on `self.no_color`, and sets `self._capability` to `"none"` when color is disabled. When color is enabled, attempts to enable Windows VT processing and detects the terminal's color capability, storing the result on `self._capability`. This may modify console state when enabling VT mode on Windows.
-
-        Parameters:
-            no_color (bool): If True, force-disable all ANSI color output regardless of environment.
-        """
-        env_no_color = bool(os.environ.get("NO_COLOR"))
-        self.no_color = no_color or env_no_color
-        self._capability = "none"
-        if not self.no_color:
-            self._enable_windows_vt_mode()
-            self._capability = self._detect_capability()
-
-    @staticmethod
-    def _is_truthy_flag(raw_value: str) -> bool:
-        """Return True when an environment-style flag requests enabling behavior."""
-
-        normalized = raw_value.strip().lower()
-        return bool(normalized) and normalized not in {"0", "false", "no", "off"}
-
-    @staticmethod
-    def _is_modern_windows_terminal() -> bool:
-        """Return True if heuristics indicate a VT-capable Windows console."""
-
-        if os.name != "nt":
-            return False
-        if os.environ.get("WT_SESSION"):
-            return True
-        term_program = os.environ.get("TERM_PROGRAM", "").lower()
-        if term_program == "windows_terminal":
-            return True
-        get_windows_version = getattr(sys, "getwindowsversion", None)
-        if callable(get_windows_version):
-            try:  # pragma: no cover - platform dependent
-                version = get_windows_version()
-            except OSError:
-                version = None
-            if version is not None:
-                major = getattr(version, "major", 0)
-                build = getattr(version, "build", 0)
-                if major > 10 or (major == 10 and build >= 10586):
-                    return True
-        return False
-
-    @staticmethod
-    def _enable_windows_vt_mode() -> None:
-        """
-        Enable ANSI VT (virtual terminal) processing on Windows consoles so ANSI escape sequences are interpreted.
-
-        This function is a no-op on non-Windows platforms. On Windows it first attempts to initialize color support via the optional `colorama` package; if `colorama` is unavailable it falls back to enabling VT processing through the Windows console API. Failures are handled silently — if VT mode cannot be enabled the function returns without raising.
-        """
-        if os.name != "nt":
-            return
-        try:
-            import colorama
-
-            colorama.just_fix_windows_console()
-            convert = not (
-                _AnsiColorMapper._is_modern_windows_terminal()
-                or _AnsiColorMapper._is_truthy_flag(
-                    os.environ.get("FRAME_COMPARE_FORCE_256_COLOR", "")
-                )
-            )
-            colorama.init(strip=False, convert=convert)
-            return
-        except ImportError:
-            pass
-        try:  # pragma: no cover - platform dependent
-            import ctypes
-
-            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-            handle = kernel32.GetStdHandle(-11)
-            mode = ctypes.c_uint()
-            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-                kernel32.SetConsoleMode(handle, mode.value | 0x0004)
-        except OSError:
-            # If enabling VT mode fails we silently continue; the console will
-            # simply ignore the escape codes.
-            pass
-
-    @staticmethod
-    def _detect_capability() -> str:
-        """
-        Determine the terminal color capability based on environment variables.
-
-        Checks COLORTERM and TERM for indications of truecolor or 256-color support and returns "256" when detected, otherwise returns "16".
-
-        Returns:
-            capability (str): "256" if truecolor/256-color support is likely, "16" otherwise.
-        """
-        force_256 = os.environ.get("FRAME_COMPARE_FORCE_256_COLOR", "").strip().lower()
-        if force_256 and force_256 not in {"0", "false", "no", "off"}:
-            return "256"
-
-        colorterm = os.environ.get("COLORTERM", "").lower()
-        if any(token in colorterm for token in ("truecolor", "24bit")):
-            return "256"
-        term = os.environ.get("TERM", "").lower()
-        if "256color" in term or "truecolor" in term:
-            return "256"
-        if os.name == "nt":
-            if os.environ.get("WT_SESSION"):
-                return "256"
-            term_program = os.environ.get("TERM_PROGRAM", "").lower()
-            if term_program == "windows_terminal":
-                return "256"
-            get_windows_version = getattr(sys, "getwindowsversion", None)
-            if callable(get_windows_version):
-                try:  # pragma: no cover - platform dependent
-                    version = get_windows_version()
-                except OSError:
-                    version = None
-                if version is not None:
-                    major = getattr(version, "major", 0)
-                    build = getattr(version, "build", 0)
-                    if major > 10 or (major == 10 and build >= 10586):
-                        return "256"
-        return "16"
-
-    def apply(self, token: str, text: str) -> str:
-        """
-        Apply the color/style represented by `token` to `text` using ANSI SGR sequences.
-
-        Parameters:
-            token (str): Color or style token name understood by the mapper.
-            text (str): The text to wrap with the style; returned unchanged if empty or styling is disabled.
-
-        Returns:
-            str: `text` wrapped with the ANSI SGR sequence for `token` and an ANSI reset, or the original `text` if no style is applied.
-        """
-        if not text or self.no_color:
-            return text
-        sgr = self._lookup(token)
-        if not sgr:
-            return text
-        return f"{sgr}{text}{_ANSI_RESET}"
-
-    def _lookup(self, token: str) -> str:
-        """
-        Convert a color token into the corresponding ANSI SGR escape sequence for the renderer's detected terminal capability.
-
-        Parameters:
-            token (str): Color token string (e.g. "accent.bold" or "green.bright") where the first segment names a color role and subsequent dot-separated segments are modifiers such as "bright", "bold", or "dim".
-
-        Returns:
-            str: The ANSI escape sequence that applies the token's color and modifiers, or an empty string if the token is empty or not supported for the current terminal capability.
-        """
-        token = (token or "").strip()
-        if not token:
-            return ""
-        parts = token.lower().split(".")
-        color = parts[0] if parts else ""
-        modifiers = {part for part in parts[1:] if part}
-
-        if self._capability == "256":
-            code = self._TOKEN_CODES_256.get(color)
-            if code is None:
-                return ""
-            attrs: List[str] = []
-            if "bold" in modifiers:
-                attrs.append("1")
-            if "dim" in modifiers:
-                attrs.append("2")
-            attrs.append(f"38;5;{code}")
-            return f"\x1b[{';'.join(attrs)}m"
-
-        if self._capability == "16":
-            base = self._TOKEN_CODES_16.get(color)
-            if base is None:
-                return ""
-            if "bright" in modifiers and 30 <= base <= 37:
-                base += 60
-            attrs = []
-            if "bold" in modifiers:
-                attrs.append("1")
-            if "dim" in modifiers:
-                attrs.append("2")
-            attrs.append(str(base))
-            return f"\x1b[{';'.join(attrs)}m"
-
-        return ""
 
 def _empty_str_any_dict() -> Dict[str, Any]:
     """Return a typed empty dict used for default factories."""
@@ -368,6 +71,7 @@ def _coerce_int_option(value: object, *, field: str) -> int:
 @dataclass
 class LayoutTheme:
     """Theme definition providing colors, symbols, and formatting options."""
+
     colors: Dict[str, str]
     symbols: Dict[str, str]
     units: Dict[str, Any]
@@ -377,6 +81,7 @@ class LayoutTheme:
 @dataclass
 class LayoutOptions:
     """Global CLI layout behaviour toggles and dimension thresholds."""
+
     two_column_min_cols: int
     blank_line_between_sections: bool
     path_ellipsis: str
@@ -386,6 +91,7 @@ class LayoutOptions:
 @dataclass
 class JsonTailConfig:
     """Configuration describing optional JSON output appended to the CLI run."""
+
     pretty_on_flag: str
     must_be_last: bool = True
 
@@ -393,6 +99,7 @@ class JsonTailConfig:
 @dataclass
 class CliLayout:
     """Validated CLI layout specification loaded from disk."""
+
     version: str
     theme: LayoutTheme
     options: LayoutOptions
@@ -405,6 +112,7 @@ class CliLayout:
 @dataclass
 class HighlightRule:
     """Conditional highlighting rule applied to rendered layout values."""
+
     when: str
     path: str
     role: Optional[str] = None
@@ -413,7 +121,9 @@ class HighlightRule:
     false_role: Optional[str] = None
 
 
-def _require_keys(mapping: Mapping[str, Any], keys: Iterable[str], *, context: str) -> None:
+def _require_keys(
+    mapping: Mapping[str, Any], keys: Iterable[str], *, context: str
+) -> None:
     """
     Validate that all specified keys are present in a mapping.
 
@@ -459,7 +169,11 @@ def load_cli_layout(path: Path) -> CliLayout:
 
     root = cast(Dict[str, object], raw)
 
-    _require_keys(root, ("version", "theme", "layout", "sections", "folding", "json_tail"), context="layout root")
+    _require_keys(
+        root,
+        ("version", "theme", "layout", "sections", "folding", "json_tail"),
+        context="layout root",
+    )
 
     theme_raw = root["theme"]
     if not isinstance(theme_raw, dict):
@@ -469,13 +183,19 @@ def load_cli_layout(path: Path) -> CliLayout:
     colors_obj = theme_dict["colors"]
     symbols_obj = theme_dict["symbols"]
     units_obj = theme_dict["units"]
-    if not isinstance(colors_obj, dict) or not isinstance(symbols_obj, dict) or not isinstance(units_obj, dict):
+    if (
+        not isinstance(colors_obj, dict)
+        or not isinstance(symbols_obj, dict)
+        or not isinstance(units_obj, dict)
+    ):
         raise CliLayoutError("theme colors/symbols/units must be objects")
     colors_map = cast(Dict[str, object], colors_obj)
     symbols_map = cast(Dict[str, object], symbols_obj)
     units_map = cast(Dict[str, Any], units_obj)
     colors: Dict[str, str] = {str(key): str(value) for key, value in colors_map.items()}
-    symbols: Dict[str, str] = {str(key): str(value) for key, value in symbols_map.items()}
+    symbols: Dict[str, str] = {
+        str(key): str(value) for key, value in symbols_map.items()
+    }
     units: Dict[str, Any] = units_map
     theme_options: Dict[str, Any] = {}
     theme_options_raw = theme_dict.get("options")
@@ -546,7 +266,9 @@ def load_cli_layout(path: Path) -> CliLayout:
         false_role = rule_dict.get("false_role")
         if when.lower() == "isbool":
             if true_role is None or false_role is None:
-                raise CliLayoutError(f"highlights[{index}] requires true_role/false_role for 'isbool'")
+                raise CliLayoutError(
+                    f"highlights[{index}] requires true_role/false_role for 'isbool'"
+                )
         elif rule_dict.get("role") is None:
             raise CliLayoutError(f"highlights[{index}] requires 'role'")
         highlights.append(
@@ -569,11 +291,16 @@ def load_cli_layout(path: Path) -> CliLayout:
             options=theme_options,
         ),
         options=LayoutOptions(
-            two_column_min_cols=_coerce_int_option(options_map["two_column_min_cols"], field="two_column_min_cols"),
-            blank_line_between_sections=bool(options_map["blank_line_between_sections"]),
+            two_column_min_cols=_coerce_int_option(
+                options_map["two_column_min_cols"], field="two_column_min_cols"
+            ),
+            blank_line_between_sections=bool(
+                options_map["blank_line_between_sections"]
+            ),
             path_ellipsis=str(options_map["path_ellipsis"]),
             truncate_right_label_min_cols=_coerce_int_option(
-                options_map["truncate_right_label_min_cols"], field="truncate_right_label_min_cols"
+                options_map["truncate_right_label_min_cols"],
+                field="truncate_right_label_min_cols",
             ),
         ),
         sections=sections,
@@ -590,7 +317,13 @@ def load_cli_layout(path: Path) -> CliLayout:
 class LayoutContext:
     """Runtime values exposed to the layout templates."""
 
-    def __init__(self, data: Mapping[str, Any], flags: Mapping[str, Any], *, renderer: "CliLayoutRenderer") -> None:
+    def __init__(
+        self,
+        data: Mapping[str, Any],
+        flags: Mapping[str, Any],
+        *,
+        renderer: "CliLayoutRenderer",
+    ) -> None:
         """
         Create a runtime context used to resolve template paths and flags during rendering.
 
@@ -632,7 +365,9 @@ class LayoutContext:
                 mapping_current = cast(Mapping[str, object], current)
                 current = mapping_current.get(segment)
                 continue
-            if isinstance(current, Sequence) and not isinstance(current, (str, bytes, bytearray)):
+            if isinstance(current, Sequence) and not isinstance(
+                current, (str, bytes, bytearray)
+            ):
                 seq_current = cast(Sequence[object], current)
                 if segment.isdigit():
                     idx = int(segment)
@@ -676,7 +411,7 @@ class CliLayoutRenderer:
         self.console = console
         self.quiet = quiet
         self.verbose = verbose
-        self._color_mapper = _AnsiColorMapper(no_color=no_color)
+        self._color_mapper = AnsiColorMapper(no_color=no_color)
         self.no_color = self._color_mapper.no_color
         self._unicode_ok = self._supports_unicode()
         self._progress_state: Dict[str, Dict[str, Any]] = {}
@@ -688,7 +423,9 @@ class CliLayoutRenderer:
         self._symbols = dict(layout.theme.symbols)
         if self.no_color:
             self._symbols = {
-                key: layout.theme.symbols.get(f"ascii_{key}", layout.theme.symbols.get(key, ""))
+                key: layout.theme.symbols.get(
+                    f"ascii_{key}", layout.theme.symbols.get(key, "")
+                )
                 for key in layout.theme.symbols
                 if not key.startswith("ascii_")
             }
@@ -696,12 +433,16 @@ class CliLayoutRenderer:
         self._unknown_role_warnings: Set[str] = set()
         self._color_blind_safe = bool(self._theme_options.get("color_blind_safe"))
         if self._color_blind_safe:
-            for role, token in _COLOR_BLIND_OVERRIDES.items():
+            for role, token in COLOR_BLIND_OVERRIDES.items():
                 self._role_tokens.setdefault(role, token)
                 self._role_tokens[role] = token
         # Ensure new accent roles fall back gracefully if theme omits them.
         if "accent_subhead" not in self._role_tokens:
-            fallback = self._role_tokens.get("accent_render") or self._role_tokens.get("accent") or ""
+            fallback = (
+                self._role_tokens.get("accent_render")
+                or self._role_tokens.get("accent")
+                or ""
+            )
             self._role_tokens["accent_subhead"] = fallback
         if "rule_dim" not in self._role_tokens:
             self._role_tokens["rule_dim"] = self._role_tokens.get("dim", "grey.dim")
@@ -727,7 +468,10 @@ class CliLayoutRenderer:
                 if block_map.get("type") == "progress":
                     progress_id = block_map.get("progress_id")
                     if progress_id is not None:
-                        self._progress_blocks[str(progress_id)] = {"block": block, "accent": accent_role}
+                        self._progress_blocks[str(progress_id)] = {
+                            "block": block,
+                            "accent": accent_role,
+                        }
 
     # ------------------------------------------------------------------
     # High-level public API
@@ -743,7 +487,12 @@ class CliLayoutRenderer:
         """
         return dict(self._symbols)
 
-    def update_progress_state(self, progress_id: str, *, state: Mapping[str, Any]) -> None:
+    def update_progress_state(
+        self,
+        progress_id: str, 
+        *,
+        state: Mapping[str, Any]
+    ) -> None:
         """
         Update the stored progress state for the given progress identifier.
 
@@ -791,7 +540,7 @@ class CliLayoutRenderer:
         Returns:
             The number of printable characters in `text` after removing ANSI escape sequences.
         """
-        return len(_ANSI_ESCAPE_RE.sub("", text))
+        return len(ANSI_ESCAPE_RE.sub("", text))
 
     def _pad_to_width(self, text: str, width: int) -> str:
         """
@@ -820,7 +569,7 @@ class CliLayoutRenderer:
         """
         if self._visible_length(text) <= width:
             return text
-        plain = _ANSI_ESCAPE_RE.sub("", text)
+        plain = ANSI_ESCAPE_RE.sub("", text)
         if len(plain) <= width:
             return text
         truncated = plain[: max(1, width - 1)] + "…"
@@ -893,7 +642,16 @@ class CliLayoutRenderer:
                 rich_modifiers.append(modifier.replace(".", " "))
         base_color = color
         if bright:
-            if color in {"black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"}:
+            if color in {
+                "black",
+                "red",
+                "green",
+                "yellow",
+                "blue",
+                "magenta",
+                "cyan",
+                "white",
+            }:
                 base_color = f"bright_{color}"
             elif color in {"grey", "gray"}:
                 base_color = "bright_black"
@@ -919,7 +677,7 @@ class CliLayoutRenderer:
             if self.no_color:
                 self.console.print(f"Warning: {message}")
             else:
-                self.console.print(f"[yellow]Warning:[/] {message}")
+                self.console.print(f"[yellow]Warning:[/yellow] {message}")
             self._unknown_role_warnings.add(role)
         return ""
 
@@ -934,10 +692,14 @@ class CliLayoutRenderer:
         if self.no_color:
             self.console.log(message, markup=False)
         else:
-            escaped = message.replace("[", "[[").replace("]", "]]" )
+            escaped = message.replace("[", "[[").replace("]", "]]")
             self.console.log(f"[dim]{escaped}[/dim]")
 
-    def _resolve_section_accent(self, section: Mapping[str, Any], badge: Optional[str] = None) -> Optional[str]:
+    def _resolve_section_accent(
+        self,
+        section: Mapping[str, Any], 
+        badge: Optional[str] = None
+    ) -> Optional[str]:
         """
         Determine the accent role for a section based on an explicit role, badge content, or the section id.
 
@@ -1014,14 +776,24 @@ class CliLayoutRenderer:
         while index < length:
             next_marker = text.find("[[", index)
             if next_marker == -1:
-                result.append(self._apply_role_to_chunk(stack[-1] if stack else None, text[index:]))
+                result.append(
+                    self._apply_role_to_chunk(stack[-1] if stack else None, text[index:])
+                )
                 break
             if next_marker > index:
-                result.append(self._apply_role_to_chunk(stack[-1] if stack else None, text[index:next_marker]))
+                result.append(
+                    self._apply_role_to_chunk(
+                        stack[-1] if stack else None, text[index:next_marker]
+                    )
+                )
             close = text.find("]]", next_marker + 2)
             if close == -1:
                 # unmatched marker, treat rest as plain text
-                result.append(self._apply_role_to_chunk(stack[-1] if stack else None, text[next_marker:]))
+                result.append(
+                    self._apply_role_to_chunk(
+                        stack[-1] if stack else None, text[next_marker:]
+                    )
+                )
                 break
             token = text[next_marker + 2 : close].strip()
             if token == "/":
@@ -1031,63 +803,6 @@ class CliLayoutRenderer:
                 stack.append(token)
             index = close + 2
         return "".join(result)
-
-    def _coerce_bool(self, value: Any) -> Optional[bool]:
-        """
-        Coerces common truthy and falsy representations into a boolean.
-
-        Accepts booleans, numeric types, and strings. Numeric values are treated as truthy when nonzero. String values recognized as truthy: "true", "yes", "1", "enabled", "on"; falsy: "false", "no", "0", "disabled", "off". Whitespace and case are ignored.
-
-        Returns:
-            `True` if the value maps to a truthy representation, `False` if it maps to a falsy representation, `None` if the value cannot be determined as boolean.
-        """
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return bool(value)
-        if isinstance(value, str):
-            lowered = value.strip().lower()
-            if lowered in {"true", "yes", "1", "enabled", "on"}:
-                return True
-            if lowered in {"false", "no", "0", "disabled", "off"}:
-                return False
-        return None
-
-    def _to_number(self, value: Any) -> Optional[float]:
-        """
-        Convert a value to a numeric float when possible.
-
-        Accepts ints and floats (returned as float), booleans (returned as 1.0 or 0.0), and numeric strings (commas allowed) and returns their float representation; returns None if conversion is not possible.
-
-        Returns:
-            A float representation of the input value, or `None` if the value cannot be converted to a number.
-        """
-        if isinstance(value, bool):
-            return float(value)
-        if isinstance(value, (int, float)):
-            return float(value)
-        if isinstance(value, str):
-            try:
-                return float(value.replace(",", ""))
-            except ValueError:
-                return None
-        return None
-
-    def _safe_eval(
-        self,
-        expression: str,
-        namespace: Mapping[str, Any],
-        *,
-        allowed_call_names: Sequence[str],
-    ) -> Any:
-        try:
-            tree = ast.parse(expression, mode="eval")
-        except SyntaxError as exc:
-            raise ValueError("Invalid expression syntax") from exc
-        allowed_calls = {name: namespace[name] for name in allowed_call_names if name in namespace}
-        _validate_safe_expression(tree, allowed_calls=allowed_calls, allowed_names=namespace)
-        compiled = compile(tree, "<cli-layout-expression>", "eval")
-        return eval(compiled, {"__builtins__": {}}, namespace)
 
     def _evaluate_expression(self, expression: str, context: LayoutContext) -> Any:
         """
@@ -1100,21 +815,7 @@ class CliLayoutRenderer:
         Returns:
             The result of the evaluated expression, or `None` if evaluation fails.
         """
-        prepared = self._prepare_condition(expression)
-        namespace: Dict[str, Any] = {
-            "resolve": context.resolve,
-            "abs": abs,
-            "min": min,
-            "max": max,
-        }
-        try:
-            return self._safe_eval(
-                prepared,
-                namespace,
-                allowed_call_names=("resolve", "abs", "min", "max"),
-            )
-        except (ValueError, TypeError, SyntaxError):
-            return None
+        return engine.evaluate_expression(expression, context.resolve)
 
     def _resolve_highlight_operand(self, operand: Any, context: LayoutContext) -> Any:
         """
@@ -1131,14 +832,17 @@ class CliLayoutRenderer:
         """
         if isinstance(operand, str):
             text = operand.strip()
-            if text.startswith("{") and text.endswith("}"):
+            if text.startswith("{}") and text.endswith("}"):
                 inner = text[1:-1].strip()
                 if inner:
                     return self._evaluate_expression(inner, context)
         return operand
 
     def _evaluate_highlight_rule(
-        self, rule: HighlightRule, value: Any, context: LayoutContext
+        self,
+        rule: HighlightRule, 
+        value: Any, 
+        context: LayoutContext
     ) -> Optional[str]:
         """
         Evaluate a HighlightRule against a value in the given LayoutContext and return the highlight role when the rule matches.
@@ -1160,14 +864,14 @@ class CliLayoutRenderer:
         """
         when = rule.when.lower()
         if when == "isbool":
-            coerced = self._coerce_bool(value)
+            coerced = engine.coerce_bool(value)
             if coerced is None:
                 return None
             return rule.true_role if coerced else rule.false_role
 
         comparator_raw = self._resolve_highlight_operand(rule.value, context)
-        value_num = self._to_number(value)
-        comparator_num = self._to_number(comparator_raw)
+        value_num = engine.to_number(value)
+        comparator_num = engine.to_number(comparator_raw)
         if value_num is None or comparator_num is None:
             return None
 
@@ -1183,7 +887,12 @@ class CliLayoutRenderer:
             return rule.role or None
         return None
 
-    def _pick_highlight(self, path: str, value: Any, context: LayoutContext) -> Optional[str]:
+    def _pick_highlight(
+        self,
+        path: str, 
+        value: Any, 
+        context: LayoutContext
+    ) -> Optional[str]:
         """
         Selects the first highlight role that applies to a given path and value.
 
@@ -1271,7 +980,12 @@ class CliLayoutRenderer:
                 return self._colorize("warn", value)
             return value
 
-        text = re.sub(r"(?<![A-Za-z0-9_])(yes|no|true|false|enabled|disabled|ok)(?![A-Za-z0-9_])", bool_repl, text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"(?<![A-Za-z0-9_])(yes|no|true|false|enabled|disabled|ok)(?![A-Za-z0-9_])",
+            bool_repl,
+            text,
+            flags=re.IGNORECASE,
+        )
         return text
 
     def _prepare_output(self, text: str, *, highlight: bool = True) -> str:
@@ -1307,7 +1021,12 @@ class CliLayoutRenderer:
         else:
             self.console.print()
 
-    def apply_path_ellipsis(self, value: Optional[str], *, width: Optional[int] = None) -> str:
+    def apply_path_ellipsis(
+        self,
+        value: Optional[str], 
+        *,
+        width: Optional[int] = None
+    ) -> str:
         """
         Shorten a path-like string with an ellipsis so it fits within the console width.
 
@@ -1345,7 +1064,8 @@ class CliLayoutRenderer:
         """
         Format a value for display according to the layout theme and an optional format specifier.
 
-        When `value` is None returns an empty string. If `fmt` is provided, attempts to format using Python's `format(value, fmt)` and falls back to subsequent rules on error. Integers (excluding booleans) use the theme's `units.thousands_sep` to insert a thousands separator when present; otherwise they are converted with `str()`. Floats are formatted with a number of decimal places taken from `theme.units.seconds_decimals` (default 2). All other values are converted with `str()`.
+        When `value` is None returns an empty string. If `fmt` is provided, attempts to format using Python's `format(value, fmt)` and falls back to subsequent rules on error. Integers (excluding booleans) use the theme's `units.thousands_sep` to insert a thousands separator when present; otherwise they are converted with `str()`.
+        Floats are formatted with a number of decimal places taken from `theme.units.seconds_decimals` (default 2). All other values are converted with `str()`.
 
         Parameters:
             value (Any): The value to format.
@@ -1696,76 +1416,14 @@ class CliLayoutRenderer:
         Returns:
             bool: `True` if the prepared expression evaluates truthy, `False` otherwise.
         """
-        expression = expr.strip()
-        if not expression:
-            return False
+        return engine.evaluate_condition(expr, context.resolve)
 
-        prepared = self._prepare_condition(expression)
-        namespace: Dict[str, Any] = {
-            "resolve": context.resolve,
-            "True": True,
-            "False": False,
-            "None": None,
-        }
-        try:
-            result = self._safe_eval(prepared, namespace, allowed_call_names=("resolve",))
-        except (ValueError, TypeError, SyntaxError):
-            return False
-        return bool(result)
-
-    def _prepare_condition(self, expr: str) -> str:
-        """
-        Convert a layout condition expression into a Python-evaluable expression that resolves symbols at runtime.
-
-        The input expression may use C-style logical operators and unqualified identifiers; this function:
-        - replaces `&&`/`||` with `and`/`or`,
-        - normalizes boolean and null-like literals (`true`/`false`/`none`) to `True`/`False`/`None`,
-        - replaces identifiers (e.g., `foo.bar`) with calls to `resolve('foo.bar')`,
-        - converts unary `!` to Python `not` while preserving `!=`.
-
-        Parameters:
-            expr (str): A condition expression from the layout template.
-
-        Returns:
-            str: A Python expression string suitable for evaluation in the renderer's restricted namespace.
-        """
-        cleaned = expr.replace("&&", " and ").replace("||", " or ")
-        tokens: List[str] = []
-        index = 0
-        while index < len(cleaned):
-            char = cleaned[index]
-            if char.isalpha() or char == "_":
-                start = index
-                while index < len(cleaned) and (cleaned[index].isalnum() or cleaned[index] in {"_", "."}):
-                    index += 1
-                token = cleaned[start:index]
-                lowered = token.lower()
-                if token in {"and", "or", "not", "True", "False", "None"}:
-                    tokens.append(token)
-                elif lowered == "true":
-                    tokens.append("True")
-                elif lowered == "false":
-                    tokens.append("False")
-                elif lowered == "none":
-                    tokens.append("None")
-                elif lowered in _SAFE_FUNCTION_TOKENS:
-                    tokens.append(token)
-                else:
-                    tokens.append(f"resolve('{token}')")
-                continue
-            if char == "!":
-                if index + 1 < len(cleaned) and cleaned[index + 1] == "=":
-                    tokens.append("!=")
-                    index += 2
-                    continue
-                tokens.append("not ")
-                index += 1
-                continue
-            tokens.append(char)
-            index += 1
-        return "".join(tokens)
-
-    def render_template(self, template: str, values: Mapping[str, Any], flags: Mapping[str, Any]) -> str:
+    def render_template(
+        self,
+        template: str, 
+        values: Mapping[str, Any], 
+        flags: Mapping[str, Any]
+    ) -> str:
         """
         Render a layout template string using the provided values and flags.
 
@@ -1784,230 +1442,509 @@ class CliLayoutRenderer:
     # Section rendering -------------------------------------------------
     # ------------------------------------------------------------------
 
-    def render_section(self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]) -> None:
+    def render_section(
+
+        self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]
+
+    ) -> None:
+
         """
+
         Render a single layout section according to the renderer's configuration and the provided data.
+
+
 
         Evaluates the section's optional "when" condition and skips rendering when it is false; honors the renderer's quiet mode and the layout option to insert a blank line between sections; dispatches to the appropriate section-specific render method and records the section as rendered. Raises CliLayoutError if the section's type is not supported.
 
+
+
         Parameters:
+
+
             section (Mapping[str, Any]): Section specification from the layout (must include "type" and may include "id" and "when").
+
             values (Mapping[str, Any]): Runtime values used for template rendering and condition evaluation.
+
             flags (Mapping[str, Any]): Runtime flags (e.g., quiet/verbose) used during rendering.
+
         """
+
         quiet_allowed = {"at_a_glance"}
+
         if self.quiet and section.get("id") not in quiet_allowed:
+
             return
+
         condition = section.get("when")
+
         if condition:
+
             context = LayoutContext(values, flags, renderer=self)
+
             if not self._evaluate_condition(condition, context):
+
                 return
+
         if (
+
             self.layout.options.blank_line_between_sections
+
             and self._rendered_section_ids
+
             and section.get("id") not in {"banner"}
+
         ):
+
             self.console.print()
+
         section_type = section["type"]
+
         render_method = getattr(self, f"_render_{section_type}_section", None)
+
         if render_method is None:
+
             raise CliLayoutError(f"Unsupported section type: {section_type}")
+
         self._active_values = values
+
         self._active_flags = flags
+
         render_method(section, values, flags)
+
         self._rendered_section_ids.append(str(section.get("id")))
 
     # Section renderers -------------------------------------------------
 
-    def _render_line_section(self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]) -> None:
+    def _render_line_section(
+
+        self,
+
+        section: Mapping[str, Any],
+
+        values: Mapping[str, Any],
+
+        flags: Mapping[str, Any],
+
+    ) -> None:
+
         """
+
         Render a single-line section by evaluating its template and writing the resulting text if non-empty.
 
+
+
         Parameters:
+
+
             section (Mapping[str, Any]): Section definition; may contain a "template" string to render.
+
             values (Mapping[str, Any]): Data values used when rendering the template.
+
             flags (Mapping[str, Any]): Flag values used when rendering the template.
+
         """
+
         template_obj = section.get("template")
+
         template = str(template_obj) if template_obj is not None else ""
+
         text = self._prepare_output(self.render_template(template, values, flags))
+
         if text:
+
             self._write(text)
 
-    def _render_box_section(self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]) -> None:
+    def _render_box_section(
+
+        self,
+
+        section: Mapping[str, Any],
+
+        values: Mapping[str, Any],
+
+        flags: Mapping[str, Any],
+
+    ) -> None:
+
         """
+
         Render a framed box section with an optional styled title and content lines.
+
+
 
         Renders the section described by `section` using `values` and `flags` as the template context. Expects `section["lines"]` to be a list of template strings; each line is rendered, truncated and padded to fit the console width, and placed inside a box drawn with Unicode box-drawing characters. If a `title` is present it is shown in the top border and styled with the theme's header role. Raises CliLayoutError if `section["lines"]` is not a list.
 
+
+
         Parameters:
+
+
             section (Mapping[str, Any]): Section specification; recognizes the keys:
+
                 - "title" (str, optional): Box title.
+
                 - "lines" (list): List of template strings to render as the box body.
+
             values (Mapping[str, Any]): Mapping of runtime values used when rendering templates.
+
             flags (Mapping[str, Any]): Mapping of runtime flags used when rendering templates.
+
         """
+
         title = section.get("title", "")
+
         lines = section.get("lines", [])
+
         if not isinstance(lines, list):
+
             raise CliLayoutError("box.lines must be a list")
+
         rendered_lines: List[str] = []
+
         lines_list = cast(List[object], lines)
+
         for line_index, line in enumerate(lines_list):
+
             if not isinstance(line, str):
+
                 raise CliLayoutError(f"box.lines[{line_index}] must be a string")
-            rendered_lines.append(self._prepare_output(self.render_template(line, values, flags)))
+
+            rendered_lines.append(
+
+                self._prepare_output(self.render_template(line, values, flags))
+
+            )
+
+
 
         title_plain = f" {title} " if title else ""
+
         title_visible = len(title_plain)
+
         styled_title = self._colorize("header", title_plain) if title_plain else ""
 
-        max_line = max((self._visible_length(line) for line in rendered_lines), default=0)
+
+
+        max_line = max(
+
+            (self._visible_length(line) for line in rendered_lines), default=0
+
+        )
+
         width = min(self._console_width(), max(20, max_line + 4, title_visible + 2))
+
         inner_width = max(0, width - 4)
 
+
+
         top_fill = max(0, width - 2 - title_visible)
+
         if styled_title:
+
             top_border = f"┌{styled_title}{'─' * top_fill}┐"
+
         else:
+
             top_border = f"┌{'─' * (width - 2)}┐"
+
+
 
         bottom_border = f"└{'─' * (width - 2)}┘"
 
+
+
         self._write(top_border)
+
         for line in rendered_lines:
+
             truncated = self._truncate_visible(line, inner_width)
+
             padded = self._pad_to_width(truncated, inner_width)
+
             self._write(f"│ {padded} │")
+
         self._write(bottom_border)
 
-    def _render_list_section(self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]) -> None:
+    def _render_list_section(
+
+        self,
+
+        section: Mapping[str, Any],
+
+        values: Mapping[str, Any],
+
+        flags: Mapping[str, Any],
+
+    ) -> None:
+
         """
+
         Render a "list" section: print the section badge/title and the section's items either as a single column or two columns depending on available console width.
+
+
 
         Each non-empty item is rendered as a template, processed for styling, and printed. When there are more than three items and the console width is at least layout.options.two_column_min_cols, items are split into two columns, truncated and padded to fit; otherwise items are printed one per line.
 
+
+
         Raises:
+
+
             CliLayoutError: if `section["items"]` exists and is not a list.
+
         """
+
         self._render_title_badge(section)
+
         items = section.get("items", [])
+
         if not isinstance(items, list):
+
             raise CliLayoutError("list.items must be a list")
+
         rendered_items: List[str] = []
+
         items_list = cast(List[object], items)
+
         for item_index, item in enumerate(items_list):
+
             if not isinstance(item, str):
+
                 raise CliLayoutError(f"list.items[{item_index}] must be a string")
+
             if not item:
+
                 continue
+
             rendered = self._prepare_output(self.render_template(item, values, flags))
+
             if rendered:
+
                 rendered_items.append(rendered)
+
         if not rendered_items:
+
             return
+
+
 
         has_multiline = any("\n" in rendered for rendered in rendered_items)
 
+
+
         width = self._console_width()
+
         two_column = (
+
             not has_multiline
+
             and len(rendered_items) > 3
+
             and width >= self.layout.options.two_column_min_cols
+
         )
+
         if two_column and rendered_items:
+
             midpoint = (len(rendered_items) + 1) // 2
+
             left_items = rendered_items[:midpoint]
+
             right_items = rendered_items[midpoint:]
+
             col_width = max(10, (width - 4) // 2)
+
             for left, right in zip_longest(left_items, right_items, fillvalue=""):
+
                 left_text = self._truncate_visible(left or "", col_width)
+
                 left_text = self._pad_to_width(left_text, col_width)
+
                 right_text = self._truncate_visible(right or "", col_width)
+
                 if right_text.strip():
+
                     self._write(f"{left_text}    {right_text}")
+
                 else:
+
                     self._write(left_text.rstrip())
+
         else:
+
             for rendered in rendered_items:
+
                 if not rendered:
+
                     continue
+
                 if "\n" in rendered:
+
                     for line in rendered.split("\n"):
+
                         if line:
+
                             self._write(line)
+
                         else:
+
                             self._write()
+
                 else:
+
                     self._write(rendered)
 
-    def _render_group_section(self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]) -> None:
+    def _render_group_section(
+
+        self,
+
+        section: Mapping[str, Any],
+
+        values: Mapping[str, Any],
+
+        flags: Mapping[str, Any],
+
+    ) -> None:
+
         """
+
         Render a "group" section by evaluating and printing its member blocks with optional subtitles and dividing rules.
 
+
+
         Each block may include:
+
         - "when": a conditional expression; the block is skipped if the condition evaluates to false.
+
         - "type": if "progress", the block is skipped (progress handled separately); otherwise treated as line-based content.
+
         - "subtitle": an optional subtitle rendered before the block's lines.
+
         - "lines": a list of templates; each template is rendered, styled, and included if non-empty.
 
+
+
         Behavior:
+
         - Validates that section["blocks"], if present, is a list and raises CliLayoutError if not.
+
         - Renders each block's lines via render_template, applies styling and alignment, and formats multi-column block lines.
+
         - Emits a decorative rule between a subtitle and its block lines when the console width is >= 80.
+
         - Writes a blank line between rendered blocks.
 
+
+
         Raises:
+
+
             CliLayoutError: if section["blocks"] is present but is not a list.
+
         """
+
         self._render_title_badge(section)
+
         blocks = section.get("blocks", [])
+
         if not isinstance(blocks, list):
+
             raise CliLayoutError("group.blocks must be a list")
+
         blocks_list = cast(List[object], blocks)
+
         rendered_blocks: list[Tuple[Optional[str], list[str]]] = []
+
         for index, block in enumerate(blocks_list):
+
             if not isinstance(block, Mapping):
+
                 continue
+
             block_map = cast(Mapping[str, object], block)
+
             when_expr_raw = block_map.get("when")
+
             if when_expr_raw:
+
                 when_expr = str(when_expr_raw)
+
                 context = LayoutContext(values, flags, renderer=self)
+
                 if not self._evaluate_condition(when_expr, context):
+
                     continue
+
             block_type = str(block_map.get("type") or "lines")
+
             if block_type == "progress":
+
                 continue
+
             subtitle_raw = block_map.get("subtitle")
+
             subtitle = str(subtitle_raw) if subtitle_raw is not None else None
+
             lines: list[str] = []
+
             raw_lines = block_map.get("lines", [])
+
             if not isinstance(raw_lines, list):
+
                 continue
+
             line_entries = cast(List[object], raw_lines)
+
             for line_index, line in enumerate(line_entries):
+
                 if not isinstance(line, str):
-                    raise CliLayoutError(f"group.blocks[{index}].lines[{line_index}] must be a string")
-                rendered = self._prepare_output(self.render_template(line, values, flags))
+
+                    raise CliLayoutError(
+
+                        f"group.blocks[{index}].lines[{line_index}] must be a string"
+
+                    )
+
+                rendered = self._prepare_output(
+
+                    self.render_template(line, values, flags)
+
+                )
+
                 if rendered:
+
                     lines.append(rendered)
+
             if not subtitle and not lines:
+
                 continue
+
             formatted_lines = self._format_block_lines(lines)
+
             rendered_blocks.append((subtitle, formatted_lines))
+
         show_rule = self._console_width() >= 80
+
         for index, (subtitle, lines) in enumerate(rendered_blocks):
+
             if subtitle:
+
                 self._write(self._format_subtitle(subtitle))
+
                 if show_rule:
+
                     rule_line = self._build_rule_line(subtitle, lines)
+
                     if rule_line:
+
                         self._write(rule_line)
+
             for line in lines:
+
                 self._write(line)
+
             if index < len(rendered_blocks) - 1 and (lines or subtitle):
+
                 self._write()
 
     def _supports_unicode(self) -> bool:
@@ -2143,38 +2080,92 @@ class CliLayoutRenderer:
             formatted.append(" " * indent + body)
         return formatted
 
-    def _render_passthrough_section(self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]) -> None:
+    def _render_passthrough_section(
+
+        self,
+
+        section: Mapping[str, Any],
+
+        values: Mapping[str, Any],
+
+        flags: Mapping[str, Any],
+
+    ) -> None:
+
         """
+
         Render a passthrough section header (title/badge) without additional body content.
 
+
+
         This renders only the section's title badge using the current theme and accent rules; passthrough sections do not produce content lines.
+
         """
+
         self._render_title_badge(section)
 
-    def _render_table_section(self, section: Mapping[str, Any], values: Mapping[str, Any], flags: Mapping[str, Any]) -> None:
+    def _render_table_section(
+
+        self,
+
+        section: Mapping[str, Any],
+
+        values: Mapping[str, Any],
+
+        flags: Mapping[str, Any],
+
+    ) -> None:
+
         """
+
         Render a table-style section by iterating over rows and rendering a per-row template.
 
+
+
         For the section's "row_template", looks up an iterable of rows from the provided values using the section's "id", merges each row into the current values as the rendering context, renders and post-processes the template, and writes each non-empty rendered line to the console. Empty or falsy rendered results are skipped.
+
         """
+
         self._render_title_badge(section)
+
         row_template_obj = section.get("row_template")
+
         row_template = str(row_template_obj) if row_template_obj is not None else ""
+
         section_id = section.get("id")
+
         if not isinstance(section_id, str):
+
             return
+
         candidate_rows = values.get(section_id, [])
+
         if not isinstance(candidate_rows, Iterable):
+
             return
+
         rows_iter = cast(Iterable[object], candidate_rows)
+
         for row in rows_iter:
+
             if not isinstance(row, Mapping):
+
                 continue
+
             row_map = cast(Mapping[str, Any], row)
+
             context_values = dict(values)
+
             context_values.update(row_map)
-            rendered = self._prepare_output(self.render_template(row_template, context_values, flags))
+
+            rendered = self._prepare_output(
+
+                self.render_template(row_template, context_values, flags)
+
+            )
+
             if rendered:
+
                 self._write(rendered)
 
     # ------------------------------------------------------------------
@@ -2205,7 +2196,12 @@ class CliLayoutRenderer:
         self._active_values = values
         self._active_flags = flags
 
-    def render_progress_column_label(self, progress_id: str, template: str, task: Task) -> str:
+    def render_progress_column_label(
+        self,
+        progress_id: str, 
+        template: str, 
+        task: Task
+    ) -> str:
         """
         Render the right-side label for a progress column using the renderer's active context.
 
@@ -2232,7 +2228,12 @@ class CliLayoutRenderer:
             prepared = parts[0]
         return prepared
 
-    def create_progress(self, progress_id: str, *, transient: bool = False) -> Progress:
+    def create_progress(
+        self,
+        progress_id: str, 
+        *,
+        transient: bool = False
+    ) -> Progress:
         """
         Create a Rich Progress instance configured for the specified progress block.
 
@@ -2256,12 +2257,16 @@ class CliLayoutRenderer:
 
         bar_style_token = self._role_style(accent_role or "accent")
         rich_bar_style = self._rich_style_from_token(bar_style_token)
-        progress_style = str(self._active_flags.get("progress_style", "fill")).strip().lower()
+        progress_style = (
+            str(self._active_flags.get("progress_style", "fill")).strip().lower()
+        )
         if progress_style not in {"fill", "dot"}:
             progress_style = "fill"
         columns: List[ProgressColumn]
         if progress_style == "dot":
-            spinner_style = rich_bar_style or self._rich_style_from_token("accent") or "cyan"
+            spinner_style = (
+                rich_bar_style or self._rich_style_from_token("accent") or "cyan"
+            )
             columns = [
                 SpinnerColumn(style=spinner_style),
                 TextColumn("{task.description}", justify="left"),
@@ -2293,7 +2298,13 @@ class CliLayoutRenderer:
 
 class _TemplateProgressColumn(ProgressColumn):
     """Rich progress column that renders using a layout template."""
-    def __init__(self, renderer: CliLayoutRenderer, progress_id: str, template: str) -> None:
+
+    def __init__(
+        self,
+        renderer: CliLayoutRenderer, 
+        progress_id: str, 
+        template: str
+    ) -> None:
         """
         Initialize the progress column with its renderer, the target progress block id, and the template used to render the right-side label.
 
@@ -2317,16 +2328,6 @@ class _TemplateProgressColumn(ProgressColumn):
         Returns:
             str: The rendered and post-processed label string, truncated to a single segment if the console width is below the configured `truncate_right_label_min_cols`.
         """
-        return self.renderer.render_progress_column_label(self.progress_id, self.template, task)
-
-
-__all__ = [
-    "CliLayout",
-    "CliLayoutError",
-    "CliLayoutRenderer",
-    "HighlightRule",
-    "JsonTailConfig",
-    "LayoutOptions",
-    "LayoutTheme",
-    "load_cli_layout",
-]
+        return self.renderer.render_progress_column_label(
+            self.progress_id, self.template, task
+        )
