@@ -124,7 +124,7 @@ class ClipLoaderPhase(Phase):
         # Layout: Alignment (using analyze_clip)
         analyze_path = context.analyze_path
         if analyze_path is None:
-             raise RuntimeError("analyze_path not set")
+            raise CLIAppError("analyze_path not set")
 
         analyze_index = [plan.path for plan in plans].index(analyze_path)
         analyze_clip = plans[analyze_index].clip

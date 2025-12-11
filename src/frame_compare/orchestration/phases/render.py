@@ -197,7 +197,7 @@ class RenderPhase(Phase):
             diagnostics_block["frame_metrics"] = metric_entry
 
         if analyze_path is None:
-            raise RuntimeError("analyze_path not set")
+            raise CLIAppError("analyze_path not set")
         analyze_index = [plan.path for plan in plans].index(analyze_path)
         analyze_props = stored_props_seq[analyze_index] or {}
         dovi_meta = extract_dovi_metadata(analyze_props)

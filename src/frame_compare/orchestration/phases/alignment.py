@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 from src.frame_compare import metadata as metadata_utils
+from src.frame_compare.cli_runtime import CLIAppError
 from src.frame_compare.orchestration.phases.base import Phase
 from src.frame_compare.orchestration.state import CoordinatorContext
 from src.frame_compare.services.alignment import AlignmentRequest
@@ -12,7 +13,7 @@ from src.frame_compare.services.metadata import CliPromptProtocol
 class AlignmentPhase(Phase):
     def execute(self, context: CoordinatorContext) -> None:
         if context.analyze_path is None:
-             raise RuntimeError("analyze_path not set in context (DiscoveryPhase failed?)")
+            raise CLIAppError("analyze_path not set in context (DiscoveryPhase failed?)")
 
         audio_track_overrides = context.request.audio_track_overrides
         audio_track_override_map = metadata_utils.parse_audio_track_overrides(audio_track_overrides or [])
