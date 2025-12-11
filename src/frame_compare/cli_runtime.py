@@ -189,13 +189,13 @@ class AudioAlignmentJSON(TypedDict, total=False):
     confirmed: bool
     suggested_frames: dict[str, int]
     reference_stream: str | None
-    target_stream: str | None
+    target_stream: dict[str, str]
     stream_lines: list[str]
     stream_lines_text: str
     offset_lines: list[str]
     offset_lines_text: str
     measurements: dict[str, Any]
-    manual_trim_summary: dict[str, Any]
+    manual_trim_summary: list[str]
 
 
 class TrimClipEntry(TypedDict):

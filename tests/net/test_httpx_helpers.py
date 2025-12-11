@@ -28,11 +28,12 @@ class HangingClient:
         seconds = _coerce_timeout(timeout)
         event = asyncio.Event()
 
-        # Create a dummy request object for the ReadTimeout exception
-        class MockRequest:
-            def __init__(self) -> None:
-                pass
-        request = cast(httpx.Request, MockRequest())
+        # Create a minimal request-like object for the ReadTimeout exception
+        class FakeRequest:
+            def __init__(self, url: str) -> None:
+                self.url = url
+
+        request = cast(httpx.Request, FakeRequest("https://example.com/api"))
 
         try:
             await asyncio.wait_for(event.wait(), timeout=seconds)

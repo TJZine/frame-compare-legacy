@@ -27,7 +27,8 @@ class ResultPhase(Phase):
     def execute(self, context: CoordinatorContext) -> None:
         env = context.env
         reporter = env.reporter
-        json_tail = context.json_tail
+        json_tail = context.json_tail or cast(Dict[str, Any], {})
+        context.json_tail = json_tail
         layout_data = context.layout_data
         request = context.request
 

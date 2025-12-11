@@ -340,7 +340,6 @@ def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: obje
         getattr(runner_module, "config_helpers", None),
         alignment_preview_module,
         tmdb_workflow_module,
-        tmdb_workflow_module,
         getattr(runner_module, "tmdb_workflow", None),
         coordinator_module,
         setup_module,
@@ -398,13 +397,13 @@ def _make_json_tail_stub() -> JsonTail:
         "confirmed": False,
         "suggested_frames": {},
         "reference_stream": None,
-        "target_stream": None,
+        "target_stream": {},
         "stream_lines": [],
         "stream_lines_text": "",
         "offset_lines": [],
         "offset_lines_text": "",
         "measurements": {},
-        "manual_trim_summary": {},
+        "manual_trim_summary": [],
     }
     tail: JsonTail = {
         "clips": [],

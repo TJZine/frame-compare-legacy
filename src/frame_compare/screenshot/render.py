@@ -204,7 +204,8 @@ def clamp_frame_index(clip: Any, frame_idx: int) -> tuple[int, bool]:
     """
     total_frames = getattr(clip, "num_frames", None)
     if not isinstance(total_frames, int) or total_frames <= 0:
-        return max(0, int(frame_idx)), False
+        clamped = max(0, int(frame_idx))
+        return clamped, clamped != int(frame_idx)
     max_index = max(0, total_frames - 1)
     clamped = max(0, min(int(frame_idx), max_index))
     return clamped, clamped != frame_idx
@@ -235,6 +236,11 @@ def apply_frame_info_overlay(
     label = title.strip()
     if not label:
         label = 'Clip'
+    label_lines = [label]
+    if selection_label:
+        selection_text = str(selection_label).strip()
+        if selection_text:
+            label_lines.append(f"Selection: {selection_text}")
 
     padding_title = " " + ("\n" * 3)
 
@@ -267,7 +273,8 @@ def apply_frame_info_overlay(
 
     try:
         info_clip = frame_eval(clip, _frame_info_callback, prop_src=clip)
-        result = subtitle(info_clip, text=[padding_title + label], style=FRAME_INFO_STYLE)
+        label_text = "\n".join(label_lines)
+        result = subtitle(info_clip, text=[padding_title + label_text], style=FRAME_INFO_STYLE)
         result = copy_frame_props(core, result, clip, context="frame info overlay")
         return result
     except (RuntimeError, ValueError) as exc:
@@ -422,11 +429,8 @@ def resolve_output_color_range(
     source_props: Mapping[str, Any],
     tonemap_info: "vs_core.TonemapInfo | None",
 ) -> int | None:
-    tonemap_applied = bool(tonemap_info and tonemap_info.applied)
     range_full, range_limited = range_constants()
     if tonemap_info and tonemap_info.output_color_range in (range_full, range_limited):
-        if tonemap_applied:
-            return int(tonemap_info.output_color_range)
         return int(tonemap_info.output_color_range)
     _, _, _, color_range = vs_core.resolve_color_metadata(source_props)
     if color_range is None:
@@ -1604,8 +1608,8 @@ def save_frame_with_ffmpeg(
         filter_chain,
         "-frames:v",
         "1",
-        "-vsync",
-        "0",
+        "-fps_mode",
+        "passthrough",
         "-compression_level",
         str(map_ffmpeg_compression(cfg.compression_level)),
     ]

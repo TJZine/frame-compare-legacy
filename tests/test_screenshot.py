@@ -1895,6 +1895,41 @@ def test_apply_frame_info_overlay_preserves_metadata() -> None:
     assert core.std.copy_invocations > 0
 
 
+def test_apply_frame_info_overlay_includes_selection_label() -> None:
+    clip = types.SimpleNamespace(num_frames=10, props={"_ColorRange": 1})
+
+    class DummyStd:
+        def FrameEval(self, clip_ref: Any, func: Any, *, prop_src: Any = None) -> Any:
+            frame = types.SimpleNamespace(props={"_PictType": b"I"})
+            return func(0, frame, clip_ref)
+
+        def CopyFrameProps(self, target: Any, source: Any) -> Any:
+            target.props = dict(getattr(source, "props", {}))
+            return target
+
+    class DummySub:
+        def __init__(self) -> None:
+            self.calls: list[Sequence[str]] = []
+
+        def Subtitle(self, clip_ref: Any, *, text: Sequence[str], style: str) -> Any:
+            self.calls.append(text)
+            return types.SimpleNamespace(props={})
+
+    dummy_sub = DummySub()
+    core = types.SimpleNamespace(std=DummyStd(), sub=dummy_sub)
+    render.apply_frame_info_overlay(
+        core,
+        clip,
+        title="Test Clip",
+        requested_frame=None,
+        selection_label="SelectionA",
+    )
+    assert dummy_sub.calls, "Subtitle should be invoked"
+    joined_calls = ["\n".join(call) for call in dummy_sub.calls]
+    assert any("Test Clip" in call for call in joined_calls)
+    assert any("Selection: SelectionA" in call for call in joined_calls)
+
+
 def test_apply_overlay_text_subtitle_path_preserves_metadata() -> None:
     clip = types.SimpleNamespace(props={"_ColorRange": 1})
 

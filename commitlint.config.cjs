@@ -25,13 +25,14 @@ module.exports = {
         'core', 'api', 'ui', 'db', 'misc'
       ]
     ],
-    // Allow empty scope for simple commits
-    'scope-empty': [1, 'never'],
+    // Allow empty scope without warnings
+    'scope-empty': [0, 'never'],
     // Relaxed length limits (practical maximums for GitHub UI)
     'header-max-length': [2, 'always', 150],
     'subject-max-length': [1, 'always', 120],  // Warn at 120, not error
     'body-max-line-length': [0, 'always', 300],  // Disabled - let markdown/URLs be long
-    'subject-case': [2, 'never', ['sentence-case', 'start-case', 'pascal-case', 'upper-case']]
+    // Do not enforce subject casing; allow team flexibility
+    'subject-case': [0, 'never', ['sentence-case', 'start-case', 'pascal-case', 'upper-case']]
   },
   defaultIgnores: true,
   ignores: [
@@ -40,4 +41,3 @@ module.exports = {
   ],
   helpUrl: 'https://commitlint.js.org/'
 };
-

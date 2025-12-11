@@ -101,7 +101,7 @@ def format_alignment_output(
         audio_block["offsets_filename"] = display.offsets_file_line.split(": ", 1)[-1]
         audio_block["reference_stream"] = display.json_reference_stream
         target_streams: dict[str, object] = dict(display.json_target_streams.items())
-        audio_block["target_stream"] = cast(str, target_streams)  # type: ignore[reportGeneralTypeIssues]
+        audio_block["target_stream"] = {key: str(value) for key, value in target_streams.items()}
         offsets_sec_source = dict(display.json_offsets_sec)
         offsets_frames_source = dict(display.json_offsets_frames)
         if (
@@ -150,17 +150,17 @@ def format_alignment_output(
             }
         audio_block["measurements"] = cast(dict[str, Any], measurements_output)
         if display.manual_trim_lines:
-            audio_block["manual_trim_summary"] = cast(dict[str, Any], list(display.manual_trim_lines))  # type: ignore
+            audio_block["manual_trim_summary"] = list(display.manual_trim_lines)
         else:
-            audio_block["manual_trim_summary"] = cast(dict[str, Any], []) # type: ignore
+            audio_block["manual_trim_summary"] = []
         if display.warnings and collected_warnings is not None:
             collected_warnings.extend(display.warnings)
     else:
         audio_block["reference_stream"] = None
-        audio_block["target_stream"] = None
+        audio_block["target_stream"] = {}
         audio_block["offsets_sec"] = {}
         audio_block["offsets_frames"] = {}
-        audio_block["manual_trim_summary"] = cast(dict[str, Any], []) # type: ignore
+        audio_block["manual_trim_summary"] = []
         audio_block["stream_lines"] = []
         audio_block["stream_lines_text"] = ""
         audio_block["offset_lines"] = []

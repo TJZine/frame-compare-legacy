@@ -126,7 +126,10 @@ class ClipLoaderPhase(Phase):
         if analyze_path is None:
             raise CLIAppError("analyze_path not set")
 
-        analyze_index = [plan.path for plan in plans].index(analyze_path)
+        try:
+            analyze_index = [plan.path for plan in plans].index(analyze_path)
+        except ValueError:
+            raise CLIAppError("Analysis path not found in plans")
         analyze_clip = plans[analyze_index].clip
         if analyze_clip is None:
             raise CLIAppError("Missing clip for analysis")

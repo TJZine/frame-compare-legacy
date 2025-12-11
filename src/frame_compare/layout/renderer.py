@@ -832,7 +832,7 @@ class CliLayoutRenderer:
         """
         if isinstance(operand, str):
             text = operand.strip()
-            if text.startswith("{}") and text.endswith("}"):
+            if text.startswith("{") and text.endswith("}"):
                 inner = text[1:-1].strip()
                 if inner:
                     return self._evaluate_expression(inner, context)
