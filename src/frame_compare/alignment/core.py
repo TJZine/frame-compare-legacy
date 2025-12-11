@@ -16,6 +16,7 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Protocol,
     Sequence,
     cast,
 )
@@ -45,6 +46,10 @@ if TYPE_CHECKING:
     from src.audio_alignment import AlignmentMeasurement, AudioStreamInfo
 
 logger = logging.getLogger(__name__)
+
+
+class ManualTrimCollector(Protocol):
+    manual_trim_lines: list[str]
 
 
 def _fps_to_float(value: tuple[int, int] | None) -> float:
@@ -159,7 +164,7 @@ def _estimate_frames_from_seconds(
 def apply_manual_offsets_logic(
     plans: Sequence[ClipPlan],
     vspreview_reuse: dict[str, int],
-    display_data: AudioAlignmentDisplayData,
+    display_data: ManualTrimCollector,
     plan_labels: dict[Path, str],
 ) -> tuple[dict[str, int], dict[str, int]]:
     """
