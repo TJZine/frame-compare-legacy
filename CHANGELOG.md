@@ -18,8 +18,6 @@
 - *2025-11-18:* wire the runner through `RunDependencies` + `RunContext`, add `default_run_dependencies()` for CLI/test injection, refresh CLI/Dolby stubs to accept the `dependencies` kwarg, and add `tests/runner/test_runner_services.py` to assert service order, error propagation, and reporter flag wiring.
 - *2025-11-19:* reintroduce the service-mode publisher pipeline with CLI overrides (`--service-mode`/`--legacy-runner`), wire RunDependencies to `ReportPublisher`/`SlowpicsPublisher`, and update runner/CLI/slow.pics tests plus docs for the new flag.
 
-### Bug Fixes
-
 - *2025-11-20:* restore VSPreview overlay hints by sourcing layout `suggested_frames`/`suggested_seconds` from the JSON tail and adding a regression test for CLI layout propagation.
 - *2025-11-19:* harden the Decision Minute workflow by fetching PR metadata via the API, skipping unmerged runs, and reading data from the github-script `result` output to avoid invalid contexts when CI completes.
 - *2025-11-19:* enforce default HTTPX timeouts for TMDB requests, switch slow.pics publishers to a lock-protected O(1) byte accumulator, and raise a CLI error when planner metadata trails the discovered files.

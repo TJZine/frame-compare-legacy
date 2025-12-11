@@ -31,16 +31,24 @@ _MAX_NUMERIC_CONSTANT = 10**9
 _MAX_STRING_LENGTH = 1000
 
 
-def _count_nodes(node: ast.AST) -> int:
-    """Count total AST nodes for complexity budget."""
-    return 1 + sum(_count_nodes(child) for child in ast.iter_child_nodes(node))
+def _count_nodes(node: ast.AST, *, limit: int | None = None) -> int:
+    """Count total AST nodes for complexity budget, optionally short-circuiting."""
+    count = 0
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        count += 1
+        if limit is not None and count > limit:
+            return count
+        stack.extend(ast.iter_child_nodes(current))
+    return count
 
 
 def validate_safe_expression(
     node: ast.AST, *, allowed_calls: Mapping[str, Any], allowed_names: Mapping[str, Any]
 ) -> None:
     """Ensure the parsed AST only contains whitelisted operations and bounded values."""
-    node_count = _count_nodes(node)
+    node_count = _count_nodes(node, limit=_MAX_AST_NODES + 1)
     if node_count > _MAX_AST_NODES:
         raise ValueError(f"Expression too complex: {node_count} nodes exceeds limit of {_MAX_AST_NODES}")
 
@@ -231,12 +239,19 @@ def evaluate_condition(expr: str, resolve_fn: Callable[[str], Any]) -> bool:
     prepared = prepare_condition(expression)
     namespace: Dict[str, Any] = {
         "resolve": resolve_fn,
+        "abs": abs,
+        "min": min,
+        "max": max,
         "True": True,
         "False": False,
         "None": None,
     }
     try:
-        result = _safe_eval(prepared, namespace, allowed_call_names=("resolve",))
+        result = _safe_eval(
+            prepared,
+            namespace,
+            allowed_call_names=("resolve", "abs", "min", "max"),
+        )
     except (ValueError, TypeError, SyntaxError):
         return False
     return bool(result)

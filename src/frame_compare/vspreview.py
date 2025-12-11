@@ -17,7 +17,7 @@ from collections.abc import Mapping as MappingABC
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Final, List, Mapping, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Final, List, Mapping, Optional, Protocol, Tuple, cast
 
 import click
 from rich.text import Text
@@ -570,6 +570,10 @@ def _measurement_detail_cls() -> type["AudioMeasurementDetail"]:
     return alignment_package.AudioMeasurementDetail
 
 
+class _ManualTrimDisplay(Protocol):
+    manual_trim_lines: list[str]
+
+
 def apply_manual_offsets(
     plans: Sequence[ClipPlan],
     summary: "AudioAlignmentSummary",
@@ -612,14 +616,14 @@ def apply_manual_offsets(
         def __init__(self) -> None:
             self.manual_trim_lines: list[str] = []
 
-    dummy_display = _DummyDisplay()
+    dummy_display: _ManualTrimDisplay = _DummyDisplay()
 
     # Call the shared logic
     # cast deltas to dict[str, int] to satisfy type checker (Mapping vs dict)
     delta_map, manual_trim_starts = apply_manual_offsets_logic(
         plans,
         dict(deltas),
-        dummy_display, # type: ignore
+        dummy_display,
         {p.path: p.path.name for p in plans}
     )
 

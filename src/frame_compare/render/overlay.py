@@ -54,7 +54,7 @@ FRAME_INFO_STYLE = (
 )
 OVERLAY_STYLE = (
     'sans-serif,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,'
-    '"0,0,0,0,100,100,0,0,1,2,0,7,10,10,70,1"'
+    '"0,0,0,0,100,100,0,0,1,2,0,7,10,10,140,1"'
 )
 
 extract_mastering_display_luminance = _diagnostics.extract_mastering_display_luminance
