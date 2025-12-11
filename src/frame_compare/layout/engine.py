@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import ast
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Mapping, Optional
 
 _SAFE_FUNCTION_TOKENS = {"abs", "min", "max"}
 
-_ALLOWED_BOOL_OPS: Tuple[type[ast.boolop], ...] = (ast.And, ast.Or)
-_ALLOWED_BIN_OPS: Tuple[type[ast.operator], ...] = (
+_ALLOWED_BOOL_OPS: tuple[type[ast.boolop], ...] = (ast.And, ast.Or)
+_ALLOWED_BIN_OPS: tuple[type[ast.operator], ...] = (
     ast.Add,
     ast.Sub,
     ast.Mult,
@@ -15,8 +15,8 @@ _ALLOWED_BIN_OPS: Tuple[type[ast.operator], ...] = (
     ast.Mod,
     ast.FloorDiv,
 )
-_ALLOWED_UNARY_OPS: Tuple[type[ast.unaryop], ...] = (ast.Not, ast.UAdd, ast.USub)
-_ALLOWED_COMPARE_OPS: Tuple[type[ast.cmpop], ...] = (
+_ALLOWED_UNARY_OPS: tuple[type[ast.unaryop], ...] = (ast.Not, ast.UAdd, ast.USub)
+_ALLOWED_COMPARE_OPS: tuple[type[ast.cmpop], ...] = (
     ast.Eq,
     ast.NotEq,
     ast.Lt,
@@ -200,7 +200,7 @@ def evaluate_expression(expression: str, resolve_fn: Callable[[str], Any]) -> An
         The result of the evaluated expression, or `None` if evaluation fails.
     """
     prepared = prepare_condition(expression)
-    namespace: Dict[str, Any] = {
+    namespace: dict[str, Any] = {
         "resolve": resolve_fn,
         "abs": abs,
         "min": min,
@@ -237,7 +237,7 @@ def evaluate_condition(expr: str, resolve_fn: Callable[[str], Any]) -> bool:
         return False
 
     prepared = prepare_condition(expression)
-    namespace: Dict[str, Any] = {
+    namespace: dict[str, Any] = {
         "resolve": resolve_fn,
         "abs": abs,
         "min": min,
@@ -309,7 +309,7 @@ def prepare_condition(expr: str) -> str:
             elif lowered == "none":
                 tokens.append("None")
             elif lowered in _SAFE_FUNCTION_TOKENS:
-                tokens.append(token)
+                tokens.append(lowered)
             else:
                 tokens.append(f"resolve('{token}')")
             continue
