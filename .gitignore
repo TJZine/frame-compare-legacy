@@ -28,12 +28,22 @@ node_modules/
 .pnp.*      # Yarn PnP
 coverage/
 
+#Cache
+.ruff_cache/
+.pytest_cache/
+.grimp_cache/
+.import_linter_cache/
+.uv_cache
+
 # Other tooling
+*.dovi_info.json
 .codanna
 .codannaignore
 .fastembed_cache
-.serena
 frame_compare_debug.py
+CODEX.md
+GEMINI.md
+.agent/*
 
 # Ignore User Config
 /config.toml
