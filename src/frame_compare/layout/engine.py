@@ -197,6 +197,9 @@ def evaluate_expression(expression: str, resolve_fn: Callable[[str], Any]) -> An
         "abs": abs,
         "min": min,
         "max": max,
+        "True": True,
+        "False": False,
+        "None": None,
     }
     try:
         return _safe_eval(

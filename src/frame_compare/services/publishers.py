@@ -320,6 +320,7 @@ class ReportPublisher:
                     )
                 except SlowpicsAPIError as exc:
                     request.reporter.error(f"Failed to generate report: {exc}")
+                    report_block["enabled"] = False
                     report_block["path"] = None
                     report_index_path = None
             except CLIAppError as exc:
@@ -339,6 +340,7 @@ class ReportPublisher:
                     report_block["enabled"] = True
                     report_block["path"] = str(report_index_path)
                 else:
+                    report_block["enabled"] = False
                     report_block["path"] = None
         else:
             report_block["enabled"] = False

@@ -5,6 +5,7 @@
 ### Bug Fixes
 
 - restore CLI run reporting: fix `frame_compare.run_cli` to pass `report_enable_override` correctly and parse `[[role]]...[[/]]` layout spans with the proper closing token so Rich markup renders cleanly without leaking markers
+- *2025-12-11:* keep VSPreview metadata consistent between top-level and audio alignment blocks (mode and hint values), allow boolean/None literals in layout expressions, seed `use_vspreview`/nested `vspreview_mode` from config defaults, harden slow.pics report handling when generation fails, and remove duplicate VSPreview manual-offset display wiring
 
 ### Features
 

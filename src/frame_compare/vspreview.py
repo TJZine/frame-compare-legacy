@@ -641,8 +641,6 @@ def apply_manual_offsets(
 
     if display is not None:
         display.manual_trim_lines.extend(manual_lines)
-        display.offset_lines = ["Audio offsets: VSPreview manual offsets applied"]
-        display.offset_lines.extend(display.manual_trim_lines)
 
     fps_lookup: Dict[str, Tuple[int, int]] = {}
     for plan in plans:

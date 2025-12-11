@@ -74,6 +74,9 @@ def format_alignment_output(
         else None
     )
     json_tail["suggested_seconds"] = float(round(vspreview_suggested_seconds_value, 6))
+    audio_block["vspreview_mode"] = vspreview_mode
+    audio_block["suggested_frames_value"] = json_tail["suggested_frames"]
+    audio_block["suggested_seconds_value"] = json_tail["suggested_seconds"]
 
     vspreview_enabled_for_session = _coerce_config_flag(cfg.audio_alignment.use_vspreview)
     if vspreview_enabled_for_session and summary is not None and summary.suggestion_mode:

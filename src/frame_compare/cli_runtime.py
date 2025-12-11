@@ -173,6 +173,7 @@ class SlowpicsJSON(TypedDict):
 
 class AudioAlignmentJSON(TypedDict, total=False):
     enabled: bool
+    use_vspreview: bool
     offsets_filename: str | None
     offsets_sec: dict[str, Any]
     offsets_frames: dict[str, Any]
@@ -188,6 +189,8 @@ class AudioAlignmentJSON(TypedDict, total=False):
     preview_paths: list[str]
     confirmed: bool
     suggested_frames: dict[str, int]
+    suggested_frames_value: int | None
+    suggested_seconds_value: float
     reference_stream: str | None
     target_stream: dict[str, str]
     stream_lines: list[str]
