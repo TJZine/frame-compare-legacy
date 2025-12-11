@@ -320,6 +320,7 @@ class ReportPublisher:
                     )
                 except SlowpicsAPIError as exc:
                     request.reporter.error(f"Failed to generate report: {exc}")
+                    report_block["path"] = None
                     report_index_path = None
             except CLIAppError as exc:
                 message = f"HTML report generation failed: {exc}"
@@ -334,8 +335,11 @@ class ReportPublisher:
                 report_block["enabled"] = False
                 report_block["path"] = None
             else:
-                report_block["enabled"] = True
-                report_block["path"] = str(report_index_path)
+                if report_index_path is not None:
+                    report_block["enabled"] = True
+                    report_block["path"] = str(report_index_path)
+                else:
+                    report_block["path"] = None
         else:
             report_block["enabled"] = False
             report_block["path"] = None

@@ -486,6 +486,17 @@ def log_selection_windows(
             log_fn = logger.warning if warning else logger.info
             log_fn(plain)
 
+    if len(plans) != len(specs):
+        warning_markup = (
+            f"[yellow]Selection plans/specs length mismatch[/]: {len(plans)} plans vs {len(specs)} specs; "
+            "extra entries will be skipped"
+        )
+        warning_plain = (
+            f"Selection plans/specs length mismatch: {len(plans)} plans vs {len(specs)} specs; "
+            "extra entries will be skipped"
+        )
+        _emit(warning_markup, warning_plain, warning=True)
+
     for plan, spec in zip(plans, specs, strict=False):
         raw_label = plan.metadata.get("label") or plan.path.name
         label_plain = (raw_label or plan.path.name).strip()

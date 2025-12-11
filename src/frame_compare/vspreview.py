@@ -602,7 +602,7 @@ def apply_manual_offsets(
 
     from src.frame_compare.alignment.core import apply_manual_offsets_logic
 
-    # 1. Reuse the shared normalization logic from alignment_runner
+    # 1. Reuse the shared normalization logic from alignment.core
     # We need to adapt the input 'deltas' to what _apply_manual_offsets_logic expects (vspreview_reuse).
     # The logic there expects: vspreview_reuse = {filename: delta_int}
     # It returns: (delta_map, manual_trim_starts)
@@ -638,11 +638,6 @@ def apply_manual_offsets(
     # The shared logic logs: "baseline X ... -> Y" for all changed plans.
     # The original code logged separate lines for targets and reference.
     # The shared logic's logging should be sufficient.
-
-    if display is not None:
-        display.manual_trim_lines.extend(manual_lines)
-        display.offset_lines = ["Audio offsets: VSPreview manual offsets applied"]
-        display.offset_lines.extend(display.manual_trim_lines)
 
     if display is not None:
         display.manual_trim_lines.extend(manual_lines)

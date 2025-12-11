@@ -338,12 +338,20 @@ def ensure_rgb24(
     yuv_constant = getattr(vs, "YUV", object())
     if color_family == yuv_constant:
         defaults: Dict[str, int] = {}
+        primaries_valid = isinstance(primaries, int) and primaries > 0
+        transfer_valid = isinstance(transfer, int) and transfer > 0
         if "matrix_in" not in resize_kwargs:
             defaults["matrix_in"] = int(getattr(vs, "MATRIX_BT709", 1))
         if "transfer_in" not in resize_kwargs:
-            defaults["transfer_in"] = int(getattr(vs, "TRANSFER_BT709", 1))
+            if transfer_valid:
+                defaults["transfer_in"] = int(cast(int, transfer))
+            else:
+                defaults["transfer_in"] = int(getattr(vs, "TRANSFER_BT709", 1))
         if "primaries_in" not in resize_kwargs:
-            defaults["primaries_in"] = int(getattr(vs, "PRIMARIES_BT709", 1))
+            if primaries_valid:
+                defaults["primaries_in"] = int(cast(int, primaries))
+            else:
+                defaults["primaries_in"] = int(getattr(vs, "PRIMARIES_BT709", 1))
         if "range_in" not in resize_kwargs:
             defaults["range_in"] = int(getattr(vs, "RANGE_LIMITED", 1))
         if defaults:

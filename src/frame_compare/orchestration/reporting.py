@@ -18,7 +18,7 @@ from src.frame_compare.cli_runtime import (
 from src.frame_compare.orchestration.state import RunRequest, RunResult
 from src.frame_compare.result_snapshot import SectionAvailability, SectionState
 
-logger = logging.getLogger('frame_compare')
+logger = logging.getLogger(__name__)
 
 
 def create_reporter(
@@ -34,7 +34,8 @@ def create_reporter(
     if reporter is None:
         if reporter_console is None:
             reporter_console = console_cls(no_color=request.no_color, highlight=False)
-        assert reporter_console is not None
+        if reporter_console is None:
+            raise RuntimeError("Failed to create reporter console")
         if request.reporter_factory is not None:
             reporter = request.reporter_factory(request, layout_path, reporter_console)
         else:
@@ -56,7 +57,8 @@ def create_reporter(
                     layout_path=layout_path,
                     console=reporter_console,
                 )
-    assert reporter is not None
+    if reporter is None:
+        raise RuntimeError("Failed to create reporter")
     return reporter
 
 

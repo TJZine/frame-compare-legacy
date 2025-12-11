@@ -532,47 +532,6 @@ def apply_audio_alignment(
         if reference_entry is not None:
             measurements.append(_build_measurement(reference.path.name, reference_entry))
 
-        def _derive_frame_count(measurement: "AlignmentMeasurement") -> Optional[int]:
-            """Return a best-effort frame estimate using measurement/plan metadata."""
-
-            if measurement.frames is not None:
-                return int(measurement.frames)
-
-            offset_seconds = float(measurement.offset_seconds or 0.0)
-            if math.isclose(offset_seconds, 0.0, abs_tol=1e-9):
-                return 0
-
-            def _from_float(fps_value: Optional[float]) -> Optional[int]:
-                if fps_value and fps_value > 0:
-                    return int(round(offset_seconds * float(fps_value)))
-                return None
-
-            for candidate in (measurement.target_fps, measurement.reference_fps):
-                derived = _from_float(candidate)
-                if derived is not None:
-                    return derived
-
-            plan = plan_map.get(measurement.file.name)
-            if plan is not None:
-                fps_candidates: list[tuple[int, int] | None] = [
-                    plan.effective_fps,
-                    plan.applied_fps,
-                    plan.fps_override,
-                    plan.source_fps,
-                ]
-                for fps_tuple in fps_candidates:
-                    fps_float = _fps_to_float(fps_tuple)
-                    derived = _from_float(fps_float)
-                    if derived is not None:
-                        return derived
-            return None
-
-        for measurement in measurements:
-            if measurement.frames is None:
-                derived_frames = _derive_frame_count(measurement)
-                if derived_frames is not None:
-                    measurement.frames = derived_frames
-
         for measurement in measurements:
             if measurement.frames is None:
                 derived_frames = _estimate_frames_from_seconds(measurement, plan_map)

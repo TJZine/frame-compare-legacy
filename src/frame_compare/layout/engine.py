@@ -101,7 +101,9 @@ def validate_safe_expression(
                 if len(inner.value) > _MAX_STRING_LENGTH:
                     raise ValueError(f"String constant too long: {len(inner.value)} characters")
                 return
-            if isinstance(inner.value, (float, bool)) or inner.value is None:
+            if isinstance(inner.value, float):
+                return
+            if isinstance(inner.value, bool) or inner.value is None:
                 return
             raise ValueError("Unsupported constant value")
         if isinstance(inner, (ast.List, ast.Tuple)):
@@ -258,6 +260,20 @@ def prepare_condition(expr: str) -> str:
     index = 0
     while index < len(cleaned):
         char = cleaned[index]
+        if char in {"'", '"'}:
+            quote = char
+            start = index
+            index += 1
+            while index < len(cleaned):
+                if cleaned[index] == "\\" and index + 1 < len(cleaned):
+                    index += 2
+                    continue
+                if cleaned[index] == quote:
+                    index += 1
+                    break
+                index += 1
+            tokens.append(cleaned[start:index])
+            continue
         if char.isalpha() or char == "_":
             start = index
             while index < len(cleaned) and (

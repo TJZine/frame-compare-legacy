@@ -15,8 +15,10 @@ class PublishPhase(Phase):
         layout_data = context.layout_data
         cfg = context.env.cfg
 
-        assert context.slowpics_title_inputs is not None, "Slowpics title inputs required for publish phase"
-        assert context.slowpics_final_title is not None, "Slowpics final title required for publish phase"
+        if context.slowpics_title_inputs is None:
+            raise ValueError("Slowpics title inputs required for publish phase")
+        if context.slowpics_final_title is None:
+            raise ValueError("Slowpics final title required for publish phase")
 
         slowpics_request = SlowpicsPublisherRequest(
             reporter=reporter,
@@ -59,7 +61,8 @@ class PublishPhase(Phase):
         context.report_path = report_result.report_path
 
         # Update Viewer Block
-        report_block = json_tail["report"]
+        report_block = json_tail.get("report", {})
+        json_tail["report"] = report_block
         viewer_block = json_tail.get("viewer", {})
         viewer_mode = "slow_pics" if slowpics_url else "local_report" if report_block.get("enabled") and report_block.get("path") else "none"
         viewer_destination: Optional[str]

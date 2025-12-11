@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Tuple, TypedDict
+from typing import TypedDict
 
 
 class GeometryPlan(TypedDict):
@@ -25,11 +25,11 @@ class GeometryPlan(TypedDict):
 
     width: int
     height: int
-    crop: Tuple[int, int, int, int]
+    crop: tuple[int, int, int, int]
     cropped_w: int
     cropped_h: int
-    scaled: Tuple[int, int]
-    pad: Tuple[int, int, int, int]
-    final: Tuple[int, int]
+    scaled: tuple[int, int]
+    pad: tuple[int, int, int, int]
+    final: tuple[int, int]
     requires_full_chroma: bool
     promotion_axes: str

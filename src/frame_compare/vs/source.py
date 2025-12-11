@@ -362,8 +362,8 @@ def init_clip(
     if frame_props_sink is not None:
         try:
             frame_props_sink(dict(source_frame_props))
-        except Exception:  # noqa: BLE001
-            logger.debug("Failed to record source frame props for %s", path)
+        except (TypeError, ValueError, AttributeError) as exc:  # noqa: BLE001
+            logger.debug("Failed to record source frame props for %s: %s", path, exc)
 
     if trim_start < 0:
         padding_props = _collect_blank_extension_props(source_frame_props)

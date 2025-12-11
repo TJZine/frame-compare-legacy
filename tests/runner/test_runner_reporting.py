@@ -27,8 +27,7 @@ def test_runner_reports_dovi_auto_enabled_simple(tmp_path: Path, monkeypatch: py
     _patch_core_helper(monkeypatch, "prepare_preflight", lambda **_kwargs: preflight)
 
     # Mock media discovery
-    import src.frame_compare.media as media_utils
-    # Mock media discovery
+    import src.frame_compare.media as media_utils  # noqa: PLC0415
     monkeypatch.setattr(media_utils, "discover_media", lambda _root: [media_root / "Alpha.mkv", media_root / "Beta.mkv"])
 
     # Mock metadata result with RPU

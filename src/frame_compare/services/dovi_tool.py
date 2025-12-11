@@ -156,7 +156,8 @@ class DoviToolService:
 
             linear_val = (num / den) ** (1.0 / m1)
             return linear_val * 10000.0
-        except (ArithmeticError, ValueError, TypeError):
+        except (ArithmeticError, ValueError, TypeError) as exc:
+            logger.debug("PQ conversion failed for pq_val=%s: %s", pq_val, exc)
             return 0.0
 
     def _parse_dovi_json(self, data: Any) -> List[Dict[str, Any]]:

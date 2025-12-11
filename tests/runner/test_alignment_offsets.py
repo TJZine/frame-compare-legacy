@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 from src.frame_compare.alignment import core as alignment_runner
 
 
-def test_reuse_vspreview_manual_offsets_normalizes_negative_trims():
+def test_reuse_vspreview_manual_offsets_normalizes_negative_trims() -> None:
     # Setup
     plan1 = MagicMock()
     plan1.path.name = "clip1.mkv"
@@ -50,7 +50,6 @@ def test_reuse_vspreview_manual_offsets_normalizes_negative_trims():
 
     # Check display lines
     assert len(display_data.manual_trim_lines) > 0
-    print(display_data.manual_trim_lines)
 
 def test_reuse_vspreview_manual_offsets_no_negative_trims() -> None:
     # Setup
