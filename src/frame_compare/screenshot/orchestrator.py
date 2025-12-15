@@ -281,20 +281,29 @@ def generate_screenshots(
 
             # Fetch dynamic props from the source clip for this frame
             current_props = dict(source_props)
-            try:
-                # Use source_clip to ensure we get original metadata (e.g. DoVi RPU stats)
-                # that might be lost or static in the processed clip.
-                # We use actual_idx which is clamped and mapped.
-                source_frame_idx = render.resolve_source_frame_index(actual_idx, trim_start)
+            # Optimization: Skip expensive frame decode (get_frame) if metadata is not displayed.
+            # Dynamic props are only used for "diagnostic" overlays.
+            should_fetch_dynamic_props = (
+                not debug_enabled
+                and bool(getattr(color_cfg, "overlay_enabled", True))
+                and str(getattr(color_cfg, "overlay_mode", "minimal")).strip().lower() == "diagnostic"
+            )
 
-                if source_frame_idx is not None:
-                    frame_ref = source_clip.get_frame(source_frame_idx)
-                    dynamic_props = dict(frame_ref.props)
-                    current_props.update(dynamic_props)
-                else:
-                    logger.debug("Frame %s falls within padding; skipping dynamic props", actual_idx)
-            except (RuntimeError, ValueError, KeyError) as exc:
-                logger.debug("Failed to fetch dynamic props for frame %s: %s", actual_idx, exc)
+            if should_fetch_dynamic_props:
+                try:
+                    # Use source_clip to ensure we get original metadata (e.g. DoVi RPU stats)
+                    # that might be lost or static in the processed clip.
+                    # We use actual_idx which is clamped and mapped.
+                    source_frame_idx = render.resolve_source_frame_index(actual_idx, trim_start)
+
+                    if source_frame_idx is not None:
+                        frame_ref = source_clip.get_frame(source_frame_idx)
+                        dynamic_props = dict(frame_ref.props)
+                        current_props.update(dynamic_props)
+                    else:
+                        logger.debug("Frame %s falls within padding; skipping dynamic props", actual_idx)
+                except (RuntimeError, ValueError, KeyError) as exc:
+                    logger.debug("Failed to fetch dynamic props for frame %s: %s", actual_idx, exc)
 
             if debug_enabled:
                 overlay_text = None
