@@ -54,7 +54,7 @@ FRAME_INFO_STYLE = (
 )
 OVERLAY_STYLE = (
     'sans-serif,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,'
-    '"0,0,0,0,100,100,0,0,1,2,0,7,10,10,140,1"'
+    '"0,0,0,0,100,100,0,0,1,2,0,7,10,10,90,1"'
 )
 
 extract_mastering_display_luminance = _diagnostics.extract_mastering_display_luminance
@@ -163,7 +163,6 @@ def compose_overlay_text(
     metrics_line = _diagnostics.format_frame_metrics_line(frame_metrics_entry)
     if metrics_line:
         lines.append(metrics_line)
-    lines.append(format_selection_line(selection_label))
     return "\n".join(lines)
 
 

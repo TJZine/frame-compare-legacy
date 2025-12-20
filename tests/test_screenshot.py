@@ -1126,7 +1126,7 @@ def test_compose_overlay_text_diagnostic_appends_required_lines() -> None:
     assert lines[4] == "DoVi: on L2 2/8 target 400 nits"
     assert lines[5] == "Range: Limited"
     assert lines[6] == "Measurement MAX/AVG: 50nits / 45nits (Bright)"
-    assert lines[7] == "Frame Selection Type: Dark"
+    assert lines[6] == "Measurement MAX/AVG: 50nits / 45nits (Bright)"
 
 
 def test_compose_overlay_text_skips_hdr_details_for_sdr() -> None:
@@ -1156,7 +1156,7 @@ def test_compose_overlay_text_skips_hdr_details_for_sdr() -> None:
     lines = composed.split("\n")
     assert "MDL:" not in composed
     assert "Measurement" not in composed
-    assert lines[-1] == "Frame Selection Type: Cached"
+    assert "Measurement" not in composed
 
 
 def test_compression_flag_passed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1853,7 +1853,7 @@ def test_compose_overlay_text_omits_selection_detail_lines() -> None:
     assert "Selection Timecode" not in composed
     assert "Selection Score" not in composed
     assert "Selection Notes" not in composed
-    assert "Frame Selection Type: Motion" in composed
+    assert "Selection Notes" not in composed
 
 
 def test_overlay_state_warning_helpers_roundtrip() -> None:
