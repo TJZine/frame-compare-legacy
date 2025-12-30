@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from src.audio_alignment import AlignmentMeasurement
-    from src.frame_compare.alignment_runner import AudioAlignmentSummary
+    from src.frame_compare.alignment import AudioAlignmentSummary
 
 
 def _lookup_measurement(

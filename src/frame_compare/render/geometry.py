@@ -23,7 +23,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from src.screenshot import GeometryPlan
+    from src.frame_compare.screenshot.config import GeometryPlan
 else:  # pragma: no cover - runtime fallback
     GeometryPlan = MutableMapping[str, Any]  # type: ignore[assignment,misc]
 
@@ -42,11 +42,11 @@ def get_subsampling(fmt: Any, attr: str) -> int:
 
     try:
         raw = getattr(fmt, attr)
-    except Exception:
+    except AttributeError:
         return 0
     try:
         return int(raw)
-    except Exception:
+    except (ValueError, TypeError):
         return 0
 
 
@@ -56,7 +56,7 @@ def axis_has_odd(values: Sequence[int]) -> bool:
     for value in values:
         try:
             current = int(value)
-        except Exception:
+        except (ValueError, TypeError):
             continue
         if current % 2 != 0:
             return True
@@ -90,7 +90,7 @@ def normalise_geometry_policy(value: OddGeometryPolicy | str) -> OddGeometryPoli
         return value
     try:
         return OddGeometryPolicy(str(value))
-    except Exception:
+    except ValueError:
         return OddGeometryPolicy.AUTO
 
 
@@ -214,7 +214,7 @@ def plan_letterbox_offsets(
         try:
             width = float(plan["width"])
             height = float(plan["height"])
-        except Exception:
+        except (ValueError, TypeError, KeyError):
             continue
         if width > 0 and height > 0:
             ratios.append(width / height)
@@ -234,7 +234,7 @@ def plan_letterbox_offsets(
         try:
             width = int(plan["width"])
             height = int(plan["height"])
-        except Exception:
+        except (ValueError, TypeError, KeyError):
             offsets.append((0, 0))
             continue
         if width <= 0 or height <= 0:

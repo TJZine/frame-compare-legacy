@@ -7,7 +7,13 @@ from typing import Any, Mapping, Sequence, cast
 import pytest
 
 from src.datatypes import AppConfig
-from src.frame_compare.cli_runtime import AudioAlignmentDisplayData, AudioAlignmentSummary, ClipPlan, JsonTail
+from src.frame_compare.cli_runtime import (
+    AudioAlignmentDisplayData,
+    AudioAlignmentSummary,
+    CliOutputManagerProtocol,
+    ClipPlan,
+    JsonTail,
+)
 from src.frame_compare.services.alignment import AlignmentRequest, AlignmentWorkflow
 from src.frame_compare.services.metadata import CliPromptProtocol
 from tests.services.conftest import StubReporter, build_base_json_tail, build_service_config
@@ -88,7 +94,7 @@ class _ConfirmRecorder:
         summary: AudioAlignmentSummary,
         cfg: AppConfig,
         root: Path,
-        reporter: CliPromptProtocol,
+        reporter: CliOutputManagerProtocol,
         display: AudioAlignmentDisplayData,
     ) -> None:
         self.calls.append((plans, summary, display))

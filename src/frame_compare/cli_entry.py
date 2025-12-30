@@ -227,13 +227,13 @@ def _run_cli_entry(
         if cfg.slowpics.open_in_browser:
             try:
                 webbrowser.open(slowpics_url)
-            except Exception:
+            except (OSError, RuntimeError):
                 print("[yellow]Warning:[/yellow] Unable to open browser for slow.pics URL")
         try:
             import pyperclip  # type: ignore
 
             pyperclip.copy(slowpics_url)
-        except Exception:
+        except (OSError, RuntimeError, ImportError, AttributeError):
             clipboard_hint = ""
         else:
             clipboard_hint = " (copied to clipboard)"
@@ -343,7 +343,7 @@ def _run_cli_entry(
         if open_after_generate:
             try:
                 opened_flag = bool(webbrowser.open(report_path.resolve().as_uri()))
-            except Exception:
+            except (OSError, RuntimeError):
                 print("[yellow]Warning:[/yellow] Unable to open browser for HTML report")
                 opened_flag = False
         report_block["path"] = str(report_path)
@@ -768,7 +768,15 @@ def main(
     ctx.obj = params_map
 
     if ctx.invoked_subcommand is None:
-        _run_cli_entry(**cast(Dict[str, Any], params))
+        try:
+            _run_cli_entry(**cast(Dict[str, Any], params))
+        except SystemExit:
+            raise
+        except Exception:  # noqa: BLE001
+            from rich.console import Console
+
+            Console().print_exception()  # type: ignore[reportUnknownMemberType,reportAttributeAccessIssue]  # type: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+            sys.exit(1)
 
 
 @main.command("run")
@@ -777,46 +785,54 @@ def run_command(ctx: click.Context) -> None:
     """Explicit subcommand to run the primary pipeline."""
 
     params = cast(Dict[str, Any], ctx.ensure_object(dict))
-    _run_cli_entry(
-        root_path=params.get("root_path"),
-        config_path=params.get("config_path"),
-        input_dir=params.get("input_dir"),
-        audio_align_track_option=tuple(params.get("audio_align_track_option", ())),
-        quiet=bool(params.get("quiet", False)),
-        verbose=bool(params.get("verbose", False)),
-        no_color=bool(params.get("no_color", False)),
-        json_pretty=bool(params.get("json_pretty", False)),
-        no_cache=bool(params.get("no_cache", False)),
-        from_cache_only=bool(params.get("from_cache_only", False)),
-        service_mode_override=params.get("service_mode_override"),
-        show_partial=bool(params.get("show_partial", False)),
-        show_missing=bool(params.get("show_missing", True)),
-        diagnose_paths=bool(params.get("diagnose_paths", False)),
-        write_config=bool(params.get("write_config", False)),
-        skip_wizard=bool(params.get("skip_wizard", False)),
-        html_report_enable=bool(params.get("html_report_enable", False)),
-        html_report_disable=bool(params.get("html_report_disable", False)),
-        debug_color=bool(params.get("debug_color", False)),
-        diagnostic_frame_metrics=params.get("diagnostic_frame_metrics"),
-        tm_preset=params.get("tm_preset"),
-        tm_curve=params.get("tm_curve"),
-        tm_target=params.get("tm_target"),
-        tm_dst_min=params.get("tm_dst_min"),
-        tm_knee=params.get("tm_knee"),
-        tm_dpd_preset=params.get("tm_dpd_preset"),
-        tm_dpd_black_cutoff=params.get("tm_dpd_black_cutoff"),
-        tm_gamma=params.get("tm_gamma"),
-        tm_gamma_disable=bool(params.get("tm_gamma_disable", False)),
-        tm_smoothing=params.get("tm_smoothing"),
-        tm_scene_low=params.get("tm_scene_low"),
-        tm_scene_high=params.get("tm_scene_high"),
-        tm_percentile=params.get("tm_percentile"),
-        tm_contrast=params.get("tm_contrast"),
-        tm_metadata=params.get("tm_metadata"),
-        tm_use_dovi=params.get("tm_use_dovi"),
-        tm_visualize_lut=params.get("tm_visualize_lut"),
-        tm_show_clipping=params.get("tm_show_clipping"),
-    )
+    try:
+        _run_cli_entry(
+            root_path=params.get("root_path"),
+            config_path=params.get("config_path"),
+            input_dir=params.get("input_dir"),
+            audio_align_track_option=tuple(params.get("audio_align_track_option", ())),
+            quiet=bool(params.get("quiet", False)),
+            verbose=bool(params.get("verbose", False)),
+            no_color=bool(params.get("no_color", False)),
+            json_pretty=bool(params.get("json_pretty", False)),
+            no_cache=bool(params.get("no_cache", False)),
+            from_cache_only=bool(params.get("from_cache_only", False)),
+            service_mode_override=params.get("service_mode_override"),
+            show_partial=bool(params.get("show_partial", False)),
+            show_missing=bool(params.get("show_missing", True)),
+            diagnose_paths=bool(params.get("diagnose_paths", False)),
+            write_config=bool(params.get("write_config", False)),
+            skip_wizard=bool(params.get("skip_wizard", False)),
+            html_report_enable=bool(params.get("html_report_enable", False)),
+            html_report_disable=bool(params.get("html_report_disable", False)),
+            debug_color=bool(params.get("debug_color", False)),
+            diagnostic_frame_metrics=params.get("diagnostic_frame_metrics"),
+            tm_preset=params.get("tm_preset"),
+            tm_curve=params.get("tm_curve"),
+            tm_target=params.get("tm_target"),
+            tm_dst_min=params.get("tm_dst_min"),
+            tm_knee=params.get("tm_knee"),
+            tm_dpd_preset=params.get("tm_dpd_preset"),
+            tm_dpd_black_cutoff=params.get("tm_dpd_black_cutoff"),
+            tm_gamma=params.get("tm_gamma"),
+            tm_gamma_disable=bool(params.get("tm_gamma_disable", False)),
+            tm_smoothing=params.get("tm_smoothing"),
+            tm_scene_low=params.get("tm_scene_low"),
+            tm_scene_high=params.get("tm_scene_high"),
+            tm_percentile=params.get("tm_percentile"),
+            tm_contrast=params.get("tm_contrast"),
+            tm_metadata=params.get("tm_metadata"),
+            tm_use_dovi=params.get("tm_use_dovi"),
+            tm_visualize_lut=params.get("tm_visualize_lut"),
+            tm_show_clipping=params.get("tm_show_clipping"),
+        )
+    except SystemExit:
+        raise
+    except Exception:  # noqa: BLE001
+        from rich.console import Console
+
+        Console().print_exception()  # type: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+        sys.exit(1)
 
 
 @main.command("doctor")
@@ -857,7 +873,7 @@ def doctor(ctx: click.Context, json_mode: bool) -> None:
     except ConfigError as exc:
         config_issue = f"Config parsing failed: {exc}" if not root_issue else str(exc)
         config_mapping = asdict(_fresh_app_config())
-    except Exception as exc:  # pragma: no cover - unexpected I/O failure
+    except (OSError, RuntimeError, ValueError) as exc:
         config_issue = f"Unable to load config: {exc}"
         config_mapping = asdict(_fresh_app_config())
 

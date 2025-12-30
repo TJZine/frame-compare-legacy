@@ -10,7 +10,7 @@ from src.frame_compare.render import geometry
 from src.frame_compare.render.errors import ScreenshotGeometryError
 
 if TYPE_CHECKING:
-    from src.screenshot import GeometryPlan
+    from src.frame_compare.screenshot.config import GeometryPlan
 else:  # pragma: no cover - typing fallback
     GeometryPlan = Dict[str, Any]
 

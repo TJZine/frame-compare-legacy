@@ -177,7 +177,7 @@ def load_probe_snapshot(cache_root: Path, cache_key: str) -> Optional[ClipProbeS
             cache_path=cache_path,
             cached_at=str(data.get("cached_at") or ""),
         )
-    except Exception:
+    except (ValueError, TypeError, KeyError):
         return None
     return snapshot
 
@@ -224,7 +224,7 @@ def _list_to_tuple(value: Any) -> Optional[tuple[int, int]]:
     try:
         first, second = value
         return int(first), int(second)
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 

@@ -14,7 +14,7 @@ def _normalize_key(key: object) -> str:
     if isinstance(key, bytes):
         try:
             key = key.decode("utf-8", "ignore")
-        except Exception:
+        except (UnicodeError, ValueError, TypeError):
             key = str(key)
     return str(key or "").strip().lower()
 
@@ -51,7 +51,7 @@ def _coerce_luminance_values(value: Any) -> list[float]:
     if isinstance(value, bytes):
         try:
             value = value.decode("utf-8", "ignore")
-        except Exception:
+        except (UnicodeError, ValueError, TypeError):
             return []
     if isinstance(value, str):
         matches = re.findall(r"[-+]?\d+(?:\.\d+)?", value)

@@ -306,32 +306,42 @@ class ReportPublisher:
                     }
                     for plan in request.plans
                 ]
-                report_index_path = self._renderer.generate(
-                    report_dir=report_dir,
-                    report_cfg=report_cfg,
-                    frames=list(request.frames),
-                    selection_details=request.selection_details,
-                    image_paths=list(request.image_paths),
-                    plans=plan_payload,
-                    metadata_title=request.metadata_title,
-                    include_metadata=str(getattr(report_cfg, "include_metadata", "minimal")),
-                    slowpics_url=request.slowpics_url,
-                )
+                try:
+                    report_index_path = self._renderer.generate(
+                        report_dir=report_dir,
+                        report_cfg=report_cfg,
+                        frames=list(request.frames),
+                        selection_details=request.selection_details,
+                        image_paths=list(request.image_paths),
+                        plans=plan_payload,
+                        metadata_title=request.metadata_title,
+                        include_metadata=str(getattr(report_cfg, "include_metadata", "minimal")),
+                        slowpics_url=request.slowpics_url,
+                    )
+                except SlowpicsAPIError as exc:
+                    request.reporter.error(f"Failed to generate report: {exc}")
+                    report_block["enabled"] = False
+                    report_block["path"] = None
+                    report_index_path = None
             except CLIAppError as exc:
                 message = f"HTML report generation failed: {exc}"
                 reporter.warn(message)
                 request.collected_warnings.append(message)
                 report_block["enabled"] = False
                 report_block["path"] = None
-            except Exception as exc:  # pragma: no cover - defensive
+            except (OSError, ValueError, TypeError) as exc:  # pragma: no cover - defensive
                 message = f"HTML report generation failed: {exc}"
                 reporter.warn(message)
                 request.collected_warnings.append(message)
                 report_block["enabled"] = False
                 report_block["path"] = None
             else:
-                report_block["enabled"] = True
-                report_block["path"] = str(report_index_path)
+                if report_index_path is not None:
+                    report_block["enabled"] = True
+                    report_block["path"] = str(report_index_path)
+                else:
+                    report_block["enabled"] = False
+                    report_block["path"] = None
         else:
             report_block["enabled"] = False
             report_block["path"] = None

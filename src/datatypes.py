@@ -1,7 +1,7 @@
 """Configuration dataclasses for frame comparison tool."""
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 
 class OddGeometryPolicy(str, Enum):
@@ -148,6 +148,7 @@ class ColorConfig:
     use_dovi: Optional[bool] = None
     visualize_lut: bool = False
     show_clipping: bool = False
+    _provided_keys: Set[str] = field(default_factory=set)
 
 
 @dataclass

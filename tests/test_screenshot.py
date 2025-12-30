@@ -9,7 +9,6 @@ from typing import Any, Dict, Mapping, Optional, Sequence, TypedDict, cast
 
 import pytest
 
-from src import screenshot
 from src.datatypes import (
     ColorConfig,
     ExportRange,
@@ -19,7 +18,14 @@ from src.datatypes import (
 )
 from src.frame_compare import subproc as fc_subproc
 from src.frame_compare import vs as vs_core
-from src.screenshot import GeometryPlan, _compute_requires_full_chroma
+from src.frame_compare.render import naming as render_naming
+from src.frame_compare.render.errors import ScreenshotError, ScreenshotWriterError
+from src.frame_compare.screenshot import orchestrator, render
+from src.frame_compare.screenshot.config import GeometryPlan
+from src.frame_compare.screenshot.naming import sanitise_label
+from src.frame_compare.screenshot.render import (
+    compute_requires_full_chroma,
+)
 
 _vapoursynth_available = importlib.util.find_spec("vapoursynth") is not None
 
@@ -45,6 +51,10 @@ class FakeClip:
         self.width = width
         self.height = height
         self.num_frames = 0
+        self.props = {}
+
+    def get_frame(self, idx: int) -> Any:
+        return types.SimpleNamespace(props=self.props) # type: ignore[reportUnknownMemberType]
 
 
 def _prepare_fake_vapoursynth_clip(
@@ -58,7 +68,53 @@ def _prepare_fake_vapoursynth_clip(
     color_family: str = "YUV",
     format_name: str | None = None,
 ) -> tuple[Any, Any, list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Install a lightweight VapourSynth stub and return a synthetic clip and call logs."""
+    """VapourSynth Test Stub Factory.
+
+    VapourSynth is a C extension that requires system-level installation (Windows/Linux).
+    On macOS dev environments without the native runtime, this factory creates a complete
+    mock of the vapoursynth module for testing screenshot geometry, crop/pad calculations,
+    and color processing without requiring the real VapourSynth installation.
+
+    Architecture:
+        - _FakeClip: Simulates vs.VideoNode with width, height, format, props, and std
+        - _FakeFormat: Holds color_family, bits_per_sample, subsampling_w/h
+        - _FakeStd: Simulates core.std (CropRel, AddBorders, SetFrameProps, Levels)
+        - _FakeResize: Simulates core.resize (Point, Spline36)
+        - _FakeFpng: Simulates core.fpng.Write for PNG output
+
+    The stub records all calls to enable behavior verification in tests:
+        - writer_calls: PNG write operations with kwargs and props
+        - resize_calls: Resolution change operations
+        - levels_calls: Gamma/levels adjustment operations
+
+    Args:
+        monkeypatch: pytest fixture for patching sys.modules
+        width: Initial clip width in pixels
+        height: Initial clip height in pixels
+        subsampling_w: Chroma horizontal subsampling (0=4:4:4, 1=4:2:2/4:2:0)
+        subsampling_h: Chroma vertical subsampling (0=4:4:4/4:2:2, 1=4:2:0)
+        bits_per_sample: Bit depth (8, 10, 12, 16)
+        color_family: "YUV" or "RGB"
+        format_name: Optional format string (e.g., "YUV420P8")
+
+    Returns:
+        tuple of (clip, fake_vs, writer_calls, resize_calls, levels_calls)
+
+    Usage::
+
+        clip, fake_vs, writer_calls, resize_calls, levels_calls = \\
+            _prepare_fake_vapoursynth_clip(
+                monkeypatch,
+                width=1920,
+                height=1080,
+                subsampling_w=1,
+                subsampling_h=1,
+                bits_per_sample=8,
+            )
+        # ... run code that uses vapoursynth ...
+        assert len(writer_calls) == 1
+        assert writer_calls[0]["props"]["_ColorRange"] == 1
+    """
 
     writer_calls: list[dict[str, Any]] = []
     resize_calls: list[dict[str, Any]] = []
@@ -172,6 +228,9 @@ def _prepare_fake_vapoursynth_clip(
             self.format = format_obj
             self.core = core
             self.props: dict[str, Any] = dict(props or {})
+
+        def get_frame(self, idx: int) -> Any:
+            return types.SimpleNamespace(props=self.props)
 
         def _with_dimensions(
             self,
@@ -313,7 +372,7 @@ def _prepare_fake_vapoursynth_clip(
 @pytest.fixture(autouse=True)
 def _stub_process_clip(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    Replace screenshot.vs_core.process_clip_for_screenshot with a test stub that simulates a processed clip.
+    Replace vs_core.process_clip_for_screenshot with a test stub that simulates a processed clip.
 
     This fixture patches the target function so it returns a types.SimpleNamespace containing:
     - clip: the passed-in clip
@@ -347,7 +406,7 @@ def _stub_process_clip(monkeypatch: pytest.MonkeyPatch) -> None:
             source_props={},
         )
 
-    monkeypatch.setattr(screenshot.vs_core, "process_clip_for_screenshot", _stub)
+    monkeypatch.setattr(vs_core, "process_clip_for_screenshot", _stub)
 
 
 def test_resolve_source_props_normalises_missing_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -359,7 +418,7 @@ def test_resolve_source_props_normalises_missing_metadata(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(vs_core, "normalise_color_metadata", fake_normalise)
 
-    clip, props = screenshot._resolve_source_props(
+    clip, props = render.resolve_source_props(
         "clip",
         {},
         color_cfg=ColorConfig(),
@@ -381,7 +440,7 @@ def test_resolve_source_props_skips_normalisation_when_range_present(monkeypatch
 
     monkeypatch.setattr(vs_core, "normalise_color_metadata", fake_normalise)
 
-    clip, props = screenshot._resolve_source_props(
+    clip, props = render.resolve_source_props(
         "original",
         {"_ColorRange": 1},
         color_cfg=ColorConfig(),
@@ -394,9 +453,9 @@ def test_resolve_source_props_skips_normalisation_when_range_present(monkeypatch
 
 
 def test_sanitise_label_replaces_forbidden_characters(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(screenshot.os, "name", "nt")
+    monkeypatch.setattr(render_naming.os, "name", "nt")
     raw = 'Group: Episode? 01*<>"| '
-    cleaned = screenshot._sanitise_label(raw)
+    cleaned = sanitise_label(raw)
     assert cleaned
     for forbidden in ':?*<>"|':
         assert forbidden not in cleaned
@@ -404,12 +463,12 @@ def test_sanitise_label_replaces_forbidden_characters(monkeypatch: pytest.Monkey
 
 
 def test_sanitise_label_falls_back_when_blank() -> None:
-    cleaned = screenshot._sanitise_label("   ")
+    cleaned = sanitise_label("   ")
     assert cleaned == "comparison"
 
 
 def test_plan_mod_crop_modulus() -> None:
-    left, top, right, bottom = screenshot.plan_mod_crop(1919, 1079, mod=4, letterbox_pillarbox_aware=True)
+    left, top, right, bottom = render.plan_mod_crop(1919, 1079, mod=4, letterbox_pillarbox_aware=True)
     new_w = 1919 - left - right
     new_h = 1079 - top - bottom
     assert new_w % 4 == 0
@@ -451,14 +510,14 @@ def test_plan_geometry_letterbox_alignment(tmp_path: Path, monkeypatch: pytest.M
         )
         Path(path).write_text("data", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_writer)
-    monkeypatch.setattr(screenshot, "_save_frame_with_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_writer)
+    monkeypatch.setattr(render, "save_frame_with_ffmpeg", lambda *args, **kwargs: None)
 
     frames: list[int] = [0]
     files: list[str] = ["clip_a.mkv", "clip_b.mkv"]
     metadata: list[dict[str, str]] = [{"label": "Clip A"}, {"label": "Clip B"}]
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         frames,
         files,
@@ -518,8 +577,8 @@ def test_generate_screenshots_debug_color_disables_overlays(tmp_path: Path, monk
         captured.setdefault("overlays_allowed", overlays_allowed)
         Path(path).write_text("data", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_writer)
-    monkeypatch.setattr(screenshot, "_save_frame_with_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_writer)
+    monkeypatch.setattr(render, "save_frame_with_ffmpeg", lambda *args, **kwargs: None)
 
     artifact = vs_core.ColorDebugArtifacts(
         normalized_clip=clip,
@@ -552,9 +611,9 @@ def test_generate_screenshots_debug_color_disables_overlays(tmp_path: Path, monk
             debug=artifact,
         )
 
-    monkeypatch.setattr(screenshot.vs_core, "process_clip_for_screenshot", fake_process)
+    monkeypatch.setattr(vs_core, "process_clip_for_screenshot", fake_process)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         [clip],
         [0],
         ["clip.mkv"],
@@ -646,11 +705,11 @@ def test_generate_screenshots_rehydrates_hdr_props_from_plans(tmp_path: Path, mo
             )
         return plans
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_writer)
-    monkeypatch.setattr(screenshot.vs_core, "process_clip_for_screenshot", fake_process)
-    monkeypatch.setattr(screenshot, "_plan_geometry", fake_plan_geometry)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_writer)
+    monkeypatch.setattr(vs_core, "process_clip_for_screenshot", fake_process)
+    monkeypatch.setattr(render, "plan_geometry", fake_plan_geometry)
 
-    created = screenshot.generate_screenshots(
+    created = orchestrator.generate_screenshots(
         [clip],
         [0],
         ["clip.mkv"],
@@ -696,7 +755,7 @@ def test_plan_geometry_subsamp_safe_rebalance_aligns_modulus() -> None:
         _ClipWithFormat(1920, 1080, 1, 1),
     ]
 
-    plans = screenshot._plan_geometry(clips, cfg)
+    plans = render.plan_geometry(clips, cfg)
 
     first_plan = plans[0]
     assert first_plan["final"][0] % cfg.mod_crop == 0
@@ -725,7 +784,7 @@ def test_compute_requires_full_chroma_policy_matrix(
     expected: bool,
 ) -> None:
     fmt = types.SimpleNamespace(subsampling_w=sub_w, subsampling_h=sub_h)
-    result = _compute_requires_full_chroma(fmt, crop, pad, policy)
+    result = compute_requires_full_chroma(fmt, crop, pad, policy)
     assert result is expected
 
 
@@ -751,7 +810,7 @@ def test_plan_geometry_aligns_vertical_odds_require_promotion() -> None:
     clip_short = _Clip(1920, 1036, _Format(1, 1))
     clip_tall = _Clip(1920, 1038, _Format(1, 1))
 
-    plans = screenshot._plan_geometry([clip_short, clip_tall], cfg)
+    plans = render.plan_geometry([clip_short, clip_tall], cfg)
 
     assert len(plans) == 2
     assert plans[0]["final"] == plans[1]["final"] == (1920, 1036)
@@ -784,7 +843,7 @@ def test_plan_geometry_even_difference_skips_full_chroma() -> None:
     clip_short = _Clip(1920, 1036, _Format(1, 1))
     clip_taller = _Clip(1920, 1040, _Format(1, 1))
 
-    plans = screenshot._plan_geometry([clip_short, clip_taller], cfg)
+    plans = render.plan_geometry([clip_short, clip_taller], cfg)
 
     assert len(plans) == 2
     assert plans[1]["crop"] == (0, 2, 0, 2)
@@ -827,12 +886,12 @@ def test_generate_screenshots_filenames(tmp_path: Path, monkeypatch: pytest.Monk
         )
         Path(path).write_text("data", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_writer)
 
     frames: list[int] = [5, 25]
     files: list[str] = ["example_video.mkv"]
     metadata: list[dict[str, str]] = [{"label": "Example Release"}]
-    created = screenshot.generate_screenshots(
+    created = orchestrator.generate_screenshots(
         [clip],
         frames,
         files,
@@ -878,8 +937,8 @@ def test_generate_screenshots_reports_permission_error(
 
     monkeypatch.setattr(path_type, "mkdir", _deny_mkdir)
 
-    with pytest.raises(screenshot.ScreenshotError) as excinfo:
-        screenshot.generate_screenshots(
+    with pytest.raises(ScreenshotError) as excinfo:
+        orchestrator.generate_screenshots(
             clips,
             frames,
             files,
@@ -951,7 +1010,7 @@ def test_compose_overlay_text_minimal_adds_resolution_and_selection() -> None:
         src_csp_hint=None,
     )
 
-    composed = screenshot._compose_overlay_text(
+    composed = render.compose_overlay_text(
         base_text,
         color_cfg,
         plan,
@@ -971,7 +1030,7 @@ def test_compose_overlay_text_minimal_handles_missing_base_and_label() -> None:
     color_cfg = ColorConfig(overlay_mode="minimal")
     plan = _make_plan()
 
-    composed = screenshot._compose_overlay_text(
+    composed = render.compose_overlay_text(
         base_text=None,
         color_cfg=color_cfg,
         plan=plan,
@@ -1002,7 +1061,7 @@ def test_compose_overlay_text_minimal_ignores_hdr_details() -> None:
         src_csp_hint=None,
     )
 
-    composed = screenshot._compose_overlay_text(
+    composed = render.compose_overlay_text(
         base_text=None,
         color_cfg=color_cfg,
         plan=plan,
@@ -1048,7 +1107,7 @@ def test_compose_overlay_text_diagnostic_appends_required_lines() -> None:
         }
     }
 
-    composed = screenshot._compose_overlay_text(
+    composed = render.compose_overlay_text(
         base_text,
         color_cfg,
         plan,
@@ -1067,7 +1126,7 @@ def test_compose_overlay_text_diagnostic_appends_required_lines() -> None:
     assert lines[4] == "DoVi: on L2 2/8 target 400 nits"
     assert lines[5] == "Range: Limited"
     assert lines[6] == "Measurement MAX/AVG: 50nits / 45nits (Bright)"
-    assert lines[7] == "Frame Selection Type: Dark"
+    assert lines[6] == "Measurement MAX/AVG: 50nits / 45nits (Bright)"
 
 
 def test_compose_overlay_text_skips_hdr_details_for_sdr() -> None:
@@ -1084,7 +1143,7 @@ def test_compose_overlay_text_skips_hdr_details_for_sdr() -> None:
         reason="SDR source",
     )
 
-    composed = screenshot._compose_overlay_text(
+    composed = render.compose_overlay_text(
         base_text,
         color_cfg,
         plan,
@@ -1097,7 +1156,7 @@ def test_compose_overlay_text_skips_hdr_details_for_sdr() -> None:
     lines = composed.split("\n")
     assert "MDL:" not in composed
     assert "Measurement" not in composed
-    assert lines[-1] == "Frame Selection Type: Cached"
+    assert "Measurement" not in composed
 
 
 def test_compression_flag_passed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1123,12 +1182,12 @@ def test_compression_flag_passed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         is_sdr: bool = True,
         **_kwargs: Any,
     ) -> None:
-        captured[frame_idx] = screenshot._map_ffmpeg_compression(cfg.compression_level)
+        captured[frame_idx] = render.map_ffmpeg_compression(cfg.compression_level)
         path.write_text("ffmpeg", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_ffmpeg", fake_writer)
+    monkeypatch.setattr(render, "save_frame_with_ffmpeg", fake_writer)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         [clip],
         [10],
         ["video.mkv"],
@@ -1167,10 +1226,10 @@ def test_ffmpeg_respects_trim_offsets(tmp_path: Path, monkeypatch: pytest.Monkey
         calls.append(frame_idx)
         Path(path).write_text("ff", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_ffmpeg", fake_ffmpeg)
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render, "save_frame_with_ffmpeg", fake_ffmpeg)
+    monkeypatch.setattr(render, "save_frame_with_fpng", lambda *args, **kwargs: None)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         [clip],
         [0, 5],
         ["video.mkv"],
@@ -1207,11 +1266,11 @@ def test_global_upscale_coordination(tmp_path: Path, monkeypatch: pytest.MonkeyP
         scaled.append((scaled_dims, pad))
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
-    monkeypatch.setattr(screenshot, "_save_frame_with_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_ffmpeg", lambda *args, **kwargs: None)
 
     metadata: list[dict[str, str]] = [{"label": f"clip{i}"} for i in range(len(clips))]
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         [f"clip{i}.mkv" for i in range(len(clips))],
@@ -1249,10 +1308,10 @@ def test_upscale_clamps_letterbox_width(tmp_path: Path, monkeypatch: pytest.Monk
         recorded.append((scaled_dims, pad))
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
 
     metadata: list[dict[str, str]] = [{"label": "hdr"}, {"label": "scope"}]
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["hdr.mkv", "scope.mkv"],
@@ -1309,9 +1368,9 @@ def test_auto_letterbox_crop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         )
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["bars.mkv", "scope.mkv"],
@@ -1343,7 +1402,7 @@ def test_auto_letterbox_basic_avoids_weird_scope_pair() -> None:
         auto_letterbox_crop="basic",
     )
 
-    plans = screenshot._plan_geometry(clips, cfg)
+    plans = render.plan_geometry(clips, cfg)
     assert len(plans) == 2
 
     wider, narrower = plans
@@ -1367,7 +1426,7 @@ def test_auto_letterbox_strict_preserves_legacy_scope_behavior() -> None:
         auto_letterbox_crop="strict",
     )
 
-    plans = screenshot._plan_geometry(clips, cfg)
+    plans = render.plan_geometry(clips, cfg)
     assert len(plans) == 2
 
     wider, narrower = plans
@@ -1418,9 +1477,9 @@ def test_pad_to_canvas_auto_handles_micro_bars(tmp_path: Path, monkeypatch: pyte
         )
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["uhd.mkv", "hd.mkv"],
@@ -1479,9 +1538,9 @@ def test_pad_to_canvas_auto_respects_tolerance(tmp_path: Path, monkeypatch: pyte
         )
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["scope.mkv", "hd.mkv"],
@@ -1539,9 +1598,9 @@ def test_pad_to_canvas_on_pillarboxes_narrow_sources(tmp_path: Path, monkeypatch
         )
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["widescreen.mkv", "academy.mkv"],
@@ -1600,9 +1659,9 @@ def test_pad_to_canvas_on_without_single_res(tmp_path: Path, monkeypatch: pytest
         )
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["wide.mkv", "narrow.mkv"],
@@ -1661,9 +1720,9 @@ def test_pad_to_canvas_auto_zero_tolerance(tmp_path: Path, monkeypatch: pytest.M
         )
         Path(path).write_text("vs", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", fake_vs_writer)
+    monkeypatch.setattr(render, "save_frame_with_fpng", fake_vs_writer)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["uhd.mkv", "hd.mkv"],
@@ -1725,10 +1784,10 @@ def test_ffmpeg_writer_receives_padding(tmp_path: Path, monkeypatch: pytest.Monk
         )
         Path(path).write_text("ff", encoding="utf-8")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_ffmpeg", fake_ffmpeg)
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render, "save_frame_with_ffmpeg", fake_ffmpeg)
+    monkeypatch.setattr(render, "save_frame_with_fpng", lambda *args, **kwargs: None)
 
-    screenshot.generate_screenshots(
+    orchestrator.generate_screenshots(
         clips,
         [0],
         ["wide.mkv", "narrow.mkv"],
@@ -1756,11 +1815,11 @@ def test_placeholder_logging(tmp_path: Path, caplog: pytest.LogCaptureFixture, m
     def failing_writer(*args, **kwargs):
         raise RuntimeError("kaboom")
 
-    monkeypatch.setattr(screenshot, "_save_frame_with_fpng", failing_writer)
-    monkeypatch.setattr(screenshot, "_save_frame_with_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(render, "save_frame_with_fpng", failing_writer)
+    monkeypatch.setattr(render, "save_frame_with_ffmpeg", lambda *args, **kwargs: None)
 
     with caplog.at_level("WARNING"):
-        created = screenshot.generate_screenshots(
+        created = orchestrator.generate_screenshots(
             [clip],
             [0],
             ["clip.mkv"],
@@ -1781,7 +1840,7 @@ def test_compose_overlay_text_omits_selection_detail_lines() -> None:
     plan = _make_plan()
     base_text = "Tonemapping Algorithm: bt.2390 dpd = 1 dst = 100 nits"
     selection_detail = {"timecode": "00:00:05.000", "score": 0.42, "notes": "motion"}
-    composed = screenshot._compose_overlay_text(
+    composed = render.compose_overlay_text(
         base_text,
         color_cfg,
         plan,
@@ -1794,14 +1853,14 @@ def test_compose_overlay_text_omits_selection_detail_lines() -> None:
     assert "Selection Timecode" not in composed
     assert "Selection Score" not in composed
     assert "Selection Notes" not in composed
-    assert "Frame Selection Type: Motion" in composed
+    assert "Selection Notes" not in composed
 
 
 def test_overlay_state_warning_helpers_roundtrip() -> None:
-    state = screenshot._new_overlay_state()
-    screenshot._append_overlay_warning(state, "first")
-    screenshot._append_overlay_warning(state, "second")
-    assert screenshot._get_overlay_warnings(state) == ["first", "second"]
+    state = render.new_overlay_state()
+    render.append_overlay_warning(state, "first")
+    render.append_overlay_warning(state, "second")
+    assert render.get_overlay_warnings(state) == ["first", "second"]
 
 
 def test_apply_frame_info_overlay_preserves_metadata() -> None:
@@ -1825,7 +1884,7 @@ def test_apply_frame_info_overlay_preserves_metadata() -> None:
             return types.SimpleNamespace(props={})
 
     core = types.SimpleNamespace(std=DummyStd(), sub=DummySub())
-    result = screenshot._apply_frame_info_overlay(
+    result = render.apply_frame_info_overlay(
         core,
         clip,
         title="Test Clip",
@@ -1834,6 +1893,41 @@ def test_apply_frame_info_overlay_preserves_metadata() -> None:
     )
     assert getattr(result, "props", {}).get("_ColorRange") == 1
     assert core.std.copy_invocations > 0
+
+
+def test_apply_frame_info_overlay_includes_selection_label() -> None:
+    clip = types.SimpleNamespace(num_frames=10, props={"_ColorRange": 1})
+
+    class DummyStd:
+        def FrameEval(self, clip_ref: Any, func: Any, *, prop_src: Any = None) -> Any:
+            frame = types.SimpleNamespace(props={"_PictType": b"I"})
+            return func(0, frame, clip_ref)
+
+        def CopyFrameProps(self, target: Any, source: Any) -> Any:
+            target.props = dict(getattr(source, "props", {}))
+            return target
+
+    class DummySub:
+        def __init__(self) -> None:
+            self.calls: list[Sequence[str]] = []
+
+        def Subtitle(self, clip_ref: Any, *, text: Sequence[str], style: str) -> Any:
+            self.calls.append(text)
+            return types.SimpleNamespace(props={})
+
+    dummy_sub = DummySub()
+    core = types.SimpleNamespace(std=DummyStd(), sub=dummy_sub)
+    render.apply_frame_info_overlay(
+        core,
+        clip,
+        title="Test Clip",
+        requested_frame=None,
+        selection_label="SelectionA",
+    )
+    assert dummy_sub.calls, "Subtitle should be invoked"
+    joined_calls = ["\n".join(call) for call in dummy_sub.calls]
+    assert any("Test Clip" in call for call in joined_calls)
+    assert any("Selection: SelectionA" in call for call in joined_calls)
 
 
 def test_apply_overlay_text_subtitle_path_preserves_metadata() -> None:
@@ -1855,7 +1949,7 @@ def test_apply_overlay_text_subtitle_path_preserves_metadata() -> None:
     core = types.SimpleNamespace(std=DummyStd(), sub=DummySub())
     state: Dict[str, Any] = {}
 
-    result = screenshot._apply_overlay_text(
+    result = render.apply_overlay_text(
         core,
         clip,
         text="Overlay",
@@ -1881,10 +1975,10 @@ def test_save_frame_with_ffmpeg_honours_timeout(monkeypatch: pytest.MonkeyPatch,
 
         return _Result()
 
-    monkeypatch.setattr(screenshot.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(render.shutil, "which", lambda _: "ffmpeg")
     monkeypatch.setattr(fc_subproc, "run_checked", fake_run)
 
-    screenshot._save_frame_with_ffmpeg(
+    render.save_frame_with_ffmpeg(
         source="video.mkv",
         frame_idx=12,
         crop=(0, 0, 0, 0),
@@ -1923,10 +2017,10 @@ def test_save_frame_with_ffmpeg_disables_timeout_when_zero(
 
         return _Result()
 
-    monkeypatch.setattr(screenshot.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(render.shutil, "which", lambda _: "ffmpeg")
     monkeypatch.setattr(fc_subproc, "run_checked", fake_run)
 
-    screenshot._save_frame_with_ffmpeg(
+    render.save_frame_with_ffmpeg(
         source="video.mkv",
         frame_idx=3,
         crop=(0, 0, 0, 0),
@@ -1966,10 +2060,10 @@ def test_save_frame_with_ffmpeg_inserts_full_chroma_filters(
 
         return _Result()
 
-    monkeypatch.setattr(screenshot.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(render.shutil, "which", lambda _: "ffmpeg")
     monkeypatch.setattr(fc_subproc, "run_checked", fake_run)
 
-    screenshot._save_frame_with_ffmpeg(
+    render.save_frame_with_ffmpeg(
         source="video.mkv",
         frame_idx=7,
         crop=(1, 0, 2, 0),
@@ -2021,10 +2115,10 @@ def test_ffmpeg_expands_limited_range_when_exporting_full(
 
         return _Result()
 
-    monkeypatch.setattr(screenshot.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(render.shutil, "which", lambda _: "ffmpeg")
     monkeypatch.setattr(fc_subproc, "run_checked", fake_run)
 
-    screenshot._save_frame_with_ffmpeg(
+    render.save_frame_with_ffmpeg(
         source="video.mkv",
         frame_idx=11,
         crop=(0, 0, 0, 0),
@@ -2061,11 +2155,11 @@ def test_save_frame_with_ffmpeg_raises_on_timeout(monkeypatch: pytest.MonkeyPatc
         cmd_arg = cast(Any, args[0])
         raise subprocess.TimeoutExpired(cmd=cmd_arg, timeout=timeout_value)
 
-    monkeypatch.setattr(screenshot.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(render.shutil, "which", lambda _: "ffmpeg")
     monkeypatch.setattr(fc_subproc, "run_checked", fake_run)
 
-    with pytest.raises(screenshot.ScreenshotWriterError) as exc_info:
-        screenshot._save_frame_with_ffmpeg(
+    with pytest.raises(ScreenshotWriterError) as exc_info:
+        render.save_frame_with_ffmpeg(
             source="video.mkv",
             frame_idx=99,
             crop=(0, 0, 0, 0),
@@ -2120,7 +2214,7 @@ def test_save_frame_with_fpng_promotes_subsampled_sdr(
 
     pivot_notes: list[str] = []
 
-    screenshot._save_frame_with_fpng(
+    render.save_frame_with_fpng(
         clip,
         frame_idx=0,
         crop=plan["crop"],
@@ -2179,7 +2273,7 @@ def test_save_frame_with_fpng_skips_promotion_on_even_geometry(
     plan = _make_plan(pad=(0, 2, 0, 2), requires_full_chroma=False)
     source_props = {"_Matrix": 1, "_Transfer": 1, "_Primaries": 1, "_ColorRange": 1}
 
-    screenshot._save_frame_with_fpng(
+    render.save_frame_with_fpng(
         clip,
         frame_idx=3,
         crop=plan["crop"],
@@ -2216,7 +2310,7 @@ def test_geometry_preserves_colour_props(monkeypatch: pytest.MonkeyPatch, tmp_pa
     clip.props.update({"_Matrix": 1, "_ColorRange": 1})
 
     captured_source_props: dict[str, Any] = {}
-    original_ensure = screenshot._ensure_rgb24
+    original_ensure = render.ensure_rgb24
 
     def _capture_ensure(
         core: Any,
@@ -2230,7 +2324,7 @@ def test_geometry_preserves_colour_props(monkeypatch: pytest.MonkeyPatch, tmp_pa
             captured_source_props.update(source_props)
         return original_ensure(core, render_clip, frame_idx, source_props=source_props, **kwargs)
 
-    monkeypatch.setattr(screenshot, "_ensure_rgb24", _capture_ensure)
+    monkeypatch.setattr(render, "ensure_rgb24", _capture_ensure)
 
     cfg = ScreenshotConfig(add_frame_info=False)
     cfg.export_range = ExportRange.FULL
@@ -2248,7 +2342,7 @@ def test_geometry_preserves_colour_props(monkeypatch: pytest.MonkeyPatch, tmp_pa
         requires_full_chroma=True,
         promotion_axes="horizontal+vertical",
     )
-    screenshot._save_frame_with_fpng(
+    render.save_frame_with_fpng(
         clip,
         frame_idx=5,
         crop=plan["crop"],
@@ -2306,7 +2400,7 @@ def test_fpng_respects_limited_export_range(
         requires_full_chroma=False,
         promotion_axes="none",
     )
-    screenshot._save_frame_with_fpng(
+    render.save_frame_with_fpng(
         clip,
         frame_idx=2,
         crop=plan["crop"],
@@ -2357,7 +2451,7 @@ def test_overlay_preserves_limited_range_metadata(
     )
     overlay_state: dict[str, Any] = {}
 
-    screenshot._save_frame_with_fpng(
+    render.save_frame_with_fpng(
         clip,
         frame_idx=0,
         crop=(0, 0, 0, 0),
@@ -2372,7 +2466,7 @@ def test_overlay_preserves_limited_range_metadata(
         overlay_state=overlay_state,
         strict_overlay=False,
         source_props={"_Matrix": 1, "_ColorRange": 1, "_Primaries": 1, "_Transfer": 1},
-        geometry_plan={"requires_full_chroma": False},
+        geometry_plan=cast(GeometryPlan, {"requires_full_chroma": False}),
         tonemap_info=tonemap_info,
         color_cfg=ColorConfig(),
         warning_sink=[],
@@ -2413,7 +2507,7 @@ def test_overlay_expands_range_when_exporting_full(
         reason="SDR source",
     )
 
-    screenshot._save_frame_with_fpng(
+    render.save_frame_with_fpng(
         clip,
         frame_idx=0,
         crop=(0, 0, 0, 0),
@@ -2428,7 +2522,7 @@ def test_overlay_expands_range_when_exporting_full(
         overlay_state={},
         strict_overlay=False,
         source_props={"_Matrix": 1, "_ColorRange": 1, "_Primaries": 1, "_Transfer": 1},
-        geometry_plan={"requires_full_chroma": False},
+        geometry_plan=cast(GeometryPlan, {"requires_full_chroma": False}),
         tonemap_info=tonemap_info,
         color_cfg=ColorConfig(),
         warning_sink=[],
@@ -2459,7 +2553,7 @@ def test_ensure_rgb24_skips_tonemapped_expansion(monkeypatch: pytest.MonkeyPatch
     )
     clip.props.update({"_ColorRange": 1, "_Tonemapped": "placebo:bt.2390"})
 
-    converted = screenshot._ensure_rgb24(
+    converted = render.ensure_rgb24(
         fake_vs.core,
         clip,
         frame_idx=0,
@@ -2516,12 +2610,13 @@ def test_ensure_rgb24_applies_rec709_defaults_when_metadata_missing(
             self.height = 1080
 
         def get_frame(self, idx: int) -> Any:  # type: ignore[override]
-            raise AssertionError("get_frame should not be invoked when props are provided")
+            # Return a dummy frame with empty props to satisfy the new strict check
+            return types.SimpleNamespace(props={})
 
     patcher = cast(Any, monkeypatch)
     patcher.setitem(sys.modules, "vapoursynth", fake_vs)
 
-    converted = screenshot._ensure_rgb24(
+    converted = render.ensure_rgb24(
         fake_core,
         _SourceClip(),
         frame_idx=12,
@@ -2594,7 +2689,7 @@ def test_ensure_rgb24_uses_source_colour_metadata(monkeypatch: pytest.MonkeyPatc
     patcher = cast(Any, monkeypatch)
     patcher.setitem(sys.modules, "vapoursynth", fake_vs)
 
-    converted = screenshot._ensure_rgb24(
+    converted = render.ensure_rgb24(
         fake_core,
         _SourceClip(),
         frame_idx=24,

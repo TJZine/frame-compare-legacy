@@ -49,7 +49,7 @@ def _frame_rate(clip: Any) -> float:
     try:
         if isinstance(num, int) and isinstance(den, int) and den:
             return num / den
-    except Exception:  # pragma: no cover - defensive
+    except (AttributeError, TypeError, ValueError, ZeroDivisionError):  # pragma: no cover - defensive
         pass
     return 24000 / 1001
 
@@ -105,9 +105,9 @@ def _is_hdr_source(clip: Any) -> bool:
     """Return True when the clip's transfer characteristics indicate HDR."""
 
     try:
-        props = vs_core._snapshot_frame_props(clip)
-        _, transfer, _, _ = vs_core._resolve_color_metadata(props)
-    except Exception:
+        props = vs_core.snapshot_frame_props(clip)
+        _, transfer, _, _ = vs_core.resolve_color_metadata(props)
+    except (AttributeError, ValueError, TypeError, RuntimeError):
         return False
 
     if transfer is None:
@@ -157,7 +157,7 @@ def _collect_metrics_vapoursynth(
     if not isinstance(clip, vs.VideoNode):
         raise TypeError("Expected a VapourSynth clip")
 
-    props = vs_core._snapshot_frame_props(clip)
+    props = vs_core.snapshot_frame_props(clip)
     clip, props, color_tuple = vs_core.normalise_color_metadata(
         clip,
         props,
@@ -201,7 +201,7 @@ def _collect_metrics_vapoursynth(
         step_value = values[1] - values[0]
         if step_value <= 0:
             return None
-        for prev, curr in zip(values, values[1:]):
+        for prev, curr in zip(values, values[1:], strict=False):
             if curr - prev != step_value:
                 return None
         return step_value
@@ -250,7 +250,7 @@ def _collect_metrics_vapoursynth(
                     **resize_kwargs,
                 )
 
-            target_format = getattr(vs, "GRAY8", None) or getattr(vs, "GRAY16")
+            target_format = getattr(vs, "GRAY8", None) or vs.GRAY16
             gray_kwargs: Dict[str, int] = dict(resize_kwargs)
             gray_formats = {
                 getattr(vs, "GRAY8", None),
@@ -271,7 +271,7 @@ def _collect_metrics_vapoursynth(
                     convert_kwargs["matrix"] = getattr(vs, "MATRIX_BT709", 1)
                 yuv = vs.core.resize.Bilinear(
                     work,
-                    format=getattr(vs, "YUV444P16"),
+                    format=vs.YUV444P16,
                     **convert_kwargs,
                 )
                 work = vs.core.std.ShufflePlanes(yuv, planes=0, colorfamily=vs.GRAY)

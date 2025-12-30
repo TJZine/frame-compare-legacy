@@ -85,6 +85,14 @@ target-version = ["py313"]
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]
 addopts = "-p no:vsengine"
+markers = [
+    "vs_required: Tests requiring VapourSynth runtime (skipped on macOS dev env)",
+    "integration: End-to-end CLI tests that exercise the full pipeline (slow)",
+    "unit: Fast isolated tests with minimal dependencies",
+    "slow: Tests that take a long time to run",
+    "network: Tests requiring network access",
+    "e2e: End-to-end tests",
+]
 
 [tool.ruff]
 line-length = 120

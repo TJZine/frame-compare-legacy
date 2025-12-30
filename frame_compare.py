@@ -77,6 +77,7 @@ def run_cli(
     show_missing_sections: bool = True,
     service_mode_override: bool | None = None,
     diagnostic_frame_metrics: bool | None = None,
+    dependencies: runner.RunDependencies | None = None,
 ) -> RunResult:
     """Delegate to the shared runner module."""
     request = RunRequest(
@@ -99,7 +100,7 @@ def run_cli(
         service_mode_override=service_mode_override,
         diagnostic_frame_metrics=diagnostic_frame_metrics,
     )
-    return runner.run(request)
+    return runner.run(request, dependencies=dependencies)
 
 
 main = _cli_entry.main

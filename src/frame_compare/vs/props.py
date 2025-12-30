@@ -123,7 +123,7 @@ def _describe_code(value: Optional[int], mapping: Mapping[int, str], default: st
         return default
     try:
         return mapping[int(value)]
-    except Exception:
+    except (ValueError, TypeError, KeyError):
         return str(value)
 
 
@@ -135,13 +135,14 @@ def _ensure_std_namespace(clip: Any, error: RuntimeError) -> Any:
 
 
 def _call_set_frame_prop(set_prop: Any, clip: Any, **kwargs: Any) -> Any:
+    # VapourSynth's SetFrameProps accessed via clip.std.SetFrameProps is typically
+    # a bound method that doesn't need the clip passed again. Try that first.
     try:
-        return set_prop(clip, **kwargs)
-    except TypeError as exc_first:
-        try:
-            return set_prop(**kwargs)
-        except TypeError:
-            raise exc_first
+        return set_prop(**kwargs)
+    except (TypeError, RuntimeError):
+        pass
+    # Fallback: some VapourSynth builds or test mocks expect clip as first arg
+    return set_prop(clip, **kwargs)
 
 
 def _normalise_property_value(value: Any) -> Any:
@@ -173,10 +174,10 @@ def _extract_frame_props(clip: Any) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], {})
 
 
-def _snapshot_frame_props(clip: Any) -> Mapping[str, Any]:
+def snapshot_frame_props(clip: Any) -> Mapping[str, Any]:
     try:
         frame = clip.get_frame(0)
-    except Exception:
+    except (RuntimeError, ValueError, KeyError):
         return dict(_extract_frame_props(clip))
     props = getattr(frame, "props", None)
     if props is None:
@@ -184,7 +185,7 @@ def _snapshot_frame_props(clip: Any) -> Mapping[str, Any]:
     return dict(props)
 
 
-def _props_signal_hdr(props: Mapping[str, Any]) -> bool:
+def props_signal_hdr(props: Mapping[str, Any]) -> bool:
     primaries = props.get("_Primaries") or props.get("Primaries")
     transfer = props.get("_Transfer") or props.get("Transfer")
 
@@ -242,7 +243,7 @@ def _normalise_resolved_code(value: Optional[int]) -> Optional[int]:
     return code
 
 
-def _resolve_color_metadata(
+def resolve_color_metadata(
     props: Mapping[str, Any],
 ) -> tuple[Optional[int], Optional[int], Optional[int], Optional[int]]:
     matrix = _coerce_prop(
@@ -297,7 +298,7 @@ def _apply_frame_props_dict(clip: Any, props: Mapping[str, Any]) -> Any:
         return clip
     try:
         return _call_set_frame_prop(set_props, clip, **props)
-    except Exception:  # pragma: no cover - best effort
+    except (TypeError, ValueError, RuntimeError):
         return clip
 
 __all__ = [
@@ -309,12 +310,12 @@ __all__ = [
     "_normalise_property_value",
     "_value_matches",
     "_extract_frame_props",
-    "_snapshot_frame_props",
-    "_props_signal_hdr",
+    "snapshot_frame_props",
+    "props_signal_hdr",
     "_coerce_prop",
     "_first_present",
     "_normalise_resolved_code",
-    "_resolve_color_metadata",
+    "resolve_color_metadata",
     "_infer_frame_height",
     "_MATRIX_NAME_TO_CODE",
     "_PRIMARIES_NAME_TO_CODE",

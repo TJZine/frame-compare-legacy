@@ -158,7 +158,7 @@ def redact_url_for_logs(url: str) -> str:
 
     try:
         parsed = urlsplit(url)
-    except Exception:
+    except (ValueError, AttributeError):
         return "url"
     if parsed.netloc:
         if parsed.hostname:

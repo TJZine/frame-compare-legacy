@@ -1,4 +1,5 @@
 import json
+import sys
 import types
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -27,9 +28,30 @@ from src.frame_compare.analysis.cache_io import ClipIdentity
 from src.frame_compare.cli_runtime import ClipPlan
 from tests.helpers.runner_env import _make_config
 
+pytestmark = pytest.mark.usefixtures("mock_vapoursynth")  # type: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
 
-class FakeClip:
+
+class MockVideoNode:
+    def __init__(self) -> None:
+        self.props = {}
+
+@pytest.fixture
+def mock_vapoursynth(monkeypatch: pytest.MonkeyPatch):
+    class MockVS:
+        VideoNode = MockVideoNode
+        RGB24 = 0
+        YUV444P16 = 0
+        core = types.SimpleNamespace(
+            resize=types.SimpleNamespace(Point=lambda clip, *a,**k: clip),
+            std=types.SimpleNamespace(SetFrameProps=lambda clip, *a,**k: clip, Levels=lambda clip, *a,**k: clip)
+        )
+    monkeypatch.setitem(sys.modules, 'vapoursynth', MockVS())
+    monkeypatch.setitem(sys.modules, 'vs', MockVS())
+
+
+class FakeClip(MockVideoNode):
     def __init__(self, num_frames: int, brightness: Sequence[float], motion: Sequence[float]) -> None:
+        super().__init__()
         self.num_frames = num_frames
         self.fps_num = 24
         self.fps_den = 1
@@ -37,7 +59,11 @@ class FakeClip:
         self.analysis_motion: Sequence[float] = motion
         self.frame_props: dict[str, int] | None = None
 
+    def get_frame(self, idx: int) -> Any:
+        return types.SimpleNamespace(props=self.frame_props or {})
 
+
+@pytest.mark.usefixtures("mock_vapoursynth")  # type: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
 def _select_frames_list(
     clip: FakeClip,
     cfg: AnalysisConfig,
@@ -66,6 +92,7 @@ def _select_frames_list(
     return cast(list[int], result)
 
 
+@pytest.mark.usefixtures("mock_vapoursynth")  # type: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
 def _select_frames_with_metadata(
     clip: FakeClip,
     cfg: AnalysisConfig,
@@ -741,7 +768,7 @@ def test_motion_quarter_gap(monkeypatch: pytest.MonkeyPatch) -> None:
     color_cfg = ColorConfig()
     frames = _select_frames_list(clip, cfg, files=["file.mkv"], file_under_analysis="file.mkv", color_cfg=color_cfg)
     assert len(frames) == 4
-    diffs = [b - a for a, b in zip(frames, frames[1:])]
+    diffs = [b - a for a, b in zip(frames, frames[1:], strict=False)]
     assert all(diff >= 48 for diff in diffs)
     assert any(diff < 192 for diff in diffs)
 

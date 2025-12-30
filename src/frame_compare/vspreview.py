@@ -17,7 +17,7 @@ from collections.abc import Mapping as MappingABC
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Final, List, Mapping, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Final, List, Mapping, Optional, Protocol, Tuple, cast
 
 import click
 from rich.text import Text
@@ -45,7 +45,7 @@ def resolve_subdir(root: Path, relative: str, *, purpose: str, allow_absolute: b
 
 if TYPE_CHECKING:  # pragma: no cover
     from src.audio_alignment import AlignmentMeasurement
-    from src.frame_compare.alignment_runner import (
+    from src.frame_compare.alignment import (
         AudioAlignmentDisplayData,
         AudioAlignmentSummary,
         AudioMeasurementDetail,
@@ -565,9 +565,13 @@ def prompt_offsets(
 
 
 def _measurement_detail_cls() -> type["AudioMeasurementDetail"]:
-    from src.frame_compare import alignment_runner as alignment_runner_module
+    from src.frame_compare import alignment as alignment_package
 
-    return alignment_runner_module.AudioMeasurementDetail
+    return alignment_package.AudioMeasurementDetail
+
+
+class _ManualTrimDisplay(Protocol):
+    manual_trim_lines: list[str]
 
 
 def apply_manual_offsets(
@@ -600,9 +604,9 @@ def apply_manual_offsets(
         reporter.warn(message)
         logger.warning(message)
 
-    from src.frame_compare import alignment_runner as alignment_runner_module
+    from src.frame_compare.alignment.core import apply_manual_offsets_logic
 
-    # 1. Reuse the shared normalization logic from alignment_runner
+    # 1. Reuse the shared normalization logic from alignment.core
     # We need to adapt the input 'deltas' to what _apply_manual_offsets_logic expects (vspreview_reuse).
     # The logic there expects: vspreview_reuse = {filename: delta_int}
     # It returns: (delta_map, manual_trim_starts)
@@ -612,14 +616,14 @@ def apply_manual_offsets(
         def __init__(self) -> None:
             self.manual_trim_lines: list[str] = []
 
-    dummy_display = _DummyDisplay()
+    dummy_display: _ManualTrimDisplay = _DummyDisplay()
 
     # Call the shared logic
     # cast deltas to dict[str, int] to satisfy type checker (Mapping vs dict)
-    delta_map, manual_trim_starts = alignment_runner_module.apply_manual_offsets_logic(
+    delta_map, manual_trim_starts = apply_manual_offsets_logic(
         plans,
         dict(deltas),
-        dummy_display, # type: ignore
+        dummy_display,
         {p.path: p.path.name for p in plans}
     )
 
@@ -641,13 +645,6 @@ def apply_manual_offsets(
 
     if display is not None:
         display.manual_trim_lines.extend(manual_lines)
-        display.offset_lines = ["Audio offsets: VSPreview manual offsets applied"]
-        display.offset_lines.extend(display.manual_trim_lines)
-
-    if display is not None:
-        display.manual_trim_lines.extend(manual_lines)
-        display.offset_lines = ["Audio offsets: VSPreview manual offsets applied"]
-        display.offset_lines.extend(display.manual_trim_lines)
 
     fps_lookup: Dict[str, Tuple[int, int]] = {}
     for plan in plans:

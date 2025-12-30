@@ -135,6 +135,8 @@ def _format_default(value: Any) -> str:
         return json.dumps(value)
     if isinstance(value, (list, dict)):
         return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, set):
+        return json.dumps(sorted(list(value)), ensure_ascii=False)
     return json.dumps(value, ensure_ascii=False)
 
 

@@ -2,20 +2,22 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import types
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import util as importlib_util
 from pathlib import Path
-from typing import Any, Callable, Dict, Final, cast
+from typing import Any, Callable, Dict, Final, Optional, cast
 
 import pytest
 from rich.console import Console
 
 import frame_compare
 import src.audio_alignment as audio_alignment_module
+import src.frame_compare.alignment as alignment_package
+import src.frame_compare.alignment.core as alignment_runner_module
 import src.frame_compare.alignment_preview as alignment_preview_module
-import src.frame_compare.alignment_runner as alignment_runner_module
 import src.frame_compare.cache as cache_module
 import src.frame_compare.config_helpers as config_helpers_module
 import src.frame_compare.core as core_module
@@ -52,6 +54,10 @@ from src.frame_compare.cli_runtime import (
     JsonTail,
     _AudioAlignmentDisplayData,
 )
+from src.frame_compare.orchestration import coordinator as coordinator_module
+from src.frame_compare.orchestration import reporting as reporting_module
+from src.frame_compare.orchestration import setup as setup_module
+from src.frame_compare.orchestration.state import RunEnvironment, RunRequest
 
 __all__ = [
     "_CliRunnerEnv",
@@ -72,13 +78,42 @@ __all__ = [
     "_selection_details_to_json",
     "install_vs_core_stub",
     "install_dummy_progress",
+    "install_tty_stdin",
+    "FakeTTY",
     "_format_vspreview_manual_command",
     "_VSPREVIEW_WINDOWS_INSTALL",
     "_VSPREVIEW_POSIX_INSTALL",
     "VSPreviewPatch",
     "install_vspreview_presence",
     "install_which_map",
+    "MockSetupService",
 ]
+
+
+class FakeTTY:
+    """Stub for sys.stdin that reports as a TTY.
+
+    Used by tests that verify interactive prompt behavior (e.g., audio alignment
+    offset confirmation) without requiring an actual terminal.
+    """
+
+    def isatty(self) -> bool:
+        return True
+
+
+def install_tty_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make sys.stdin appear as a TTY for interactive prompt tests."""
+    monkeypatch.setattr(sys, "stdin", FakeTTY())
+
+
+class MockSetupService:
+    """A setup service that returns a pre-configured environment."""
+
+    def __init__(self, env: RunEnvironment) -> None:
+        self.env = env
+
+    def prepare_run_environment(self, request: RunRequest) -> RunEnvironment:
+        return self.env
 
 
 @dataclass
@@ -154,9 +189,10 @@ class _CliRunnerEnv:
         module_targets = (
             core_module,
             frame_compare,
-            runner_module.core,
             preflight_module,
             getattr(runner_module, "preflight_utils", None),
+            setup_module,
+            coordinator_module,
         )
         for module in module_targets:
             if module is None:
@@ -224,8 +260,9 @@ def _patch_core_helper(monkeypatch: pytest.MonkeyPatch, attr: str, value: object
 
     targets = [
         frame_compare,
-        runner_module.core,
+        core_module,
         alignment_runner_module,
+        alignment_package,
         vspreview_module,
         getattr(runner_module, "vspreview", None),
         preflight_module,
@@ -245,6 +282,9 @@ def _patch_core_helper(monkeypatch: pytest.MonkeyPatch, attr: str, value: object
         getattr(runner_module, "planner_utils", None),
         tmdb_workflow_module,
         getattr(runner_module, "tmdb_workflow", None),
+        coordinator_module,
+        setup_module,
+        reporting_module,
     ]
     for target in targets:
         if target is None:
@@ -258,11 +298,36 @@ def _patch_vs_core(monkeypatch: pytest.MonkeyPatch, attr: str, value: object) ->
     """Patch VapourSynth helpers in both the shim module and the runner module."""
 
     monkeypatch.setattr(vs_core_module, attr, value, raising=False)
-    monkeypatch.setattr(runner_module.vs_core, attr, value, raising=False)
 
 
 def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: object) -> None:
     """Patch shared runner dependencies exposed at the runner module level."""
+
+    import src.frame_compare.cli_runtime as cli_runtime_module
+    from src.frame_compare.orchestration.phases import (
+        alignment as alignment_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
+        analysis as analysis_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
+        discovery as discovery_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
+        loader as loader_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
+        publish as publish_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
+        render as render_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
+        result as result_phase,
+    )
+    from src.frame_compare.orchestration.phases import (
+        setup as setup_phase,
+    )
 
     targets = [
         frame_compare,
@@ -276,6 +341,18 @@ def _patch_runner_module(monkeypatch: pytest.MonkeyPatch, attr: str, value: obje
         alignment_preview_module,
         tmdb_workflow_module,
         getattr(runner_module, "tmdb_workflow", None),
+        coordinator_module,
+        setup_module,
+        reporting_module,
+        cli_runtime_module,
+        setup_phase,
+        discovery_phase,
+        alignment_phase,
+        loader_phase,
+        analysis_phase,
+        render_phase,
+        publish_phase,
+        result_phase,
     ]
     for target in targets:
         if target is None:
@@ -291,7 +368,6 @@ def _patch_audio_alignment(monkeypatch: pytest.MonkeyPatch, attr: str, value: ob
     if target is not None:
         monkeypatch.setattr(target, attr, value, raising=False)
     monkeypatch.setattr(core_module.audio_alignment, attr, value, raising=False)
-    monkeypatch.setattr(runner_module.core.audio_alignment, attr, value, raising=False)
     monkeypatch.setattr(alignment_runner_module.audio_alignment, attr, value, raising=False)
     monkeypatch.setattr(vspreview_module.audio_alignment, attr, value, raising=False)
     runner_alignment = getattr(runner_module, "alignment_runner", None)
@@ -305,24 +381,29 @@ def _make_json_tail_stub() -> JsonTail:
 
     audio_block: AudioAlignmentJSON = {
         "enabled": False,
-        "reference_stream": None,
-        "target_stream": {},
+        "offsets_filename": "offsets.toml",
         "offsets_sec": {},
         "offsets_frames": {},
-        "preview_paths": [],
-        "confirmed": None,
-        "offsets_filename": "offsets.toml",
-        "manual_trim_summary": [],
         "suggestion_mode": True,
-        "suggested_frames": {},
-        "manual_trim_starts": {},
-        "use_vspreview": False,
-        "vspreview_manual_offsets": {},
-        "vspreview_manual_deltas": {},
-        "vspreview_reference_trim": None,
+        "vspreview_mode": "baseline",
         "vspreview_script": None,
         "vspreview_invoked": False,
         "vspreview_exit_code": None,
+        "manual_trim_starts": {},
+        "vspreview_manual_offsets": {},
+        "vspreview_manual_deltas": {},
+        "vspreview_reference_trim": 0,
+        "preview_paths": [],
+        "confirmed": False,
+        "suggested_frames": {},
+        "reference_stream": None,
+        "target_stream": {},
+        "stream_lines": [],
+        "stream_lines_text": "",
+        "offset_lines": [],
+        "offset_lines_text": "",
+        "measurements": {},
+        "manual_trim_summary": [],
     }
     tail: JsonTail = {
         "clips": [],
@@ -496,11 +577,16 @@ class _RecordingOutputManager(CliOutputManager):
         )
         self.lines: list[str] = []
 
-    def line(self, text: str) -> None:
+    def line(self, text: str = "", *, style: Optional[str] = None) -> None:
         """Record the rendered line while still delegating to the base implementation."""
 
         self.lines.append(text)
         super().line(text)
+
+    def error(self, text: str) -> None:
+        """Record error output."""
+        self.lines.append(f"ERROR: {text}")
+        super().error(text)
 
 
 class DummyProgress:
@@ -545,13 +631,7 @@ def _patch_load_config(monkeypatch: pytest.MonkeyPatch, cfg: AppConfig) -> None:
     monkeypatch.setattr(core_module, "load_config", lambda *_args, **_kwargs: cfg)
     monkeypatch.setattr(frame_compare, "load_config", lambda *_args, **_kwargs: cfg)
     monkeypatch.setattr(preflight_module, "load_config", lambda *_args, **_kwargs: cfg)
-    if hasattr(runner_module, "preflight_utils"):
-        monkeypatch.setattr(
-            runner_module.preflight_utils,
-            "load_config",
-            lambda *_args, **_kwargs: cfg,
-            raising=False,
-        )
+    monkeypatch.setattr(setup_module, "load_config", lambda *_args, **_kwargs: cfg, raising=False)
 
 
 def _selection_details_to_json(

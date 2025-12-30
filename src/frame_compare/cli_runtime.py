@@ -25,7 +25,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.progress import Progress, ProgressColumn
 
-from src.frame_compare.cli_layout import CliLayoutError, CliLayoutRenderer, load_cli_layout
+from src.frame_compare.layout import CliLayoutError, CliLayoutRenderer, load_cli_layout
 from src.frame_compare.layout_utils import (
     color_text as _color_text,
 )
@@ -93,7 +93,7 @@ class ClipProbeSnapshot:
 
 
 @dataclass
-class _ClipPlan:
+class ClipPlan:
     """
     Internal plan describing how a source clip should be processed.
 
@@ -144,8 +144,6 @@ class _ClipPlan:
     probe_cache_path: Optional[Path] = None
 
 
-ClipPlan = _ClipPlan
-
 _OverrideValue = TypeVar("_OverrideValue")
 
 
@@ -175,29 +173,32 @@ class SlowpicsJSON(TypedDict):
 
 class AudioAlignmentJSON(TypedDict, total=False):
     enabled: bool
-    reference_stream: Optional[str]
-    target_stream: dict[str, object]
-    offsets_sec: dict[str, object]
-    offsets_frames: dict[str, object]
-    measurements: dict[str, dict[str, object]]
+    use_vspreview: bool
+    offsets_filename: str | None
+    offsets_sec: dict[str, Any]
+    offsets_frames: dict[str, Any]
+    suggestion_mode: bool
+    vspreview_mode: str
+    vspreview_script: str | None
+    vspreview_invoked: bool
+    vspreview_exit_code: int | None
+    manual_trim_starts: dict[str, int]
+    vspreview_manual_offsets: dict[str, int]
+    vspreview_manual_deltas: dict[str, int]
+    vspreview_reference_trim: int
+    preview_paths: list[str]
+    confirmed: bool
+    suggested_frames: dict[str, int]
+    suggested_frames_value: int | None
+    suggested_seconds_value: float
+    reference_stream: str | None
+    target_stream: dict[str, str]
     stream_lines: list[str]
     stream_lines_text: str
     offset_lines: list[str]
     offset_lines_text: str
-    preview_paths: list[str]
-    confirmed: bool | str | None
-    offsets_filename: str
-    use_vspreview: bool
-    vspreview_manual_offsets: dict[str, object]
-    vspreview_manual_deltas: dict[str, object]
-    vspreview_reference_trim: Optional[int]
+    measurements: dict[str, Any]
     manual_trim_summary: list[str]
-    suggestion_mode: bool
-    suggested_frames: dict[str, int]
-    manual_trim_starts: dict[str, int]
-    vspreview_script: Optional[str]
-    vspreview_invoked: bool
-    vspreview_exit_code: Optional[int]
 
 
 class TrimClipEntry(TypedDict):
@@ -350,14 +351,7 @@ class CLIAppError(RuntimeError):
         self.rich_message = rich_message or message
 
 
-from src.frame_compare import alignment_runner as _alignment_runner_module  # noqa: E402,I001
 
-AudioAlignmentSummary = _alignment_runner_module.AudioAlignmentSummary
-AudioMeasurementDetail = _alignment_runner_module.AudioMeasurementDetail
-AudioAlignmentDisplayData = _alignment_runner_module.AudioAlignmentDisplayData
-_AudioAlignmentSummary = AudioAlignmentSummary
-_AudioMeasurementDetail = AudioMeasurementDetail
-_AudioAlignmentDisplayData = AudioAlignmentDisplayData
 
 
 class CliOutputManagerProtocol(Protocol):
@@ -367,31 +361,31 @@ class CliOutputManagerProtocol(Protocol):
     flags: Dict[str, Any]
     values: Dict[str, Any]
 
-    def set_flag(self, key: str, value: Any) -> None: ...
-
-    def update_values(self, mapping: Mapping[str, Any]) -> None: ...
+    def line(self, text: str) -> None: ...
 
     def warn(self, text: str) -> None: ...
 
-    def get_warnings(self) -> List[str]: ...
+    def error(self, text: str) -> None: ...
 
-    def render_sections(self, section_ids: Iterable[str]) -> None: ...
-
-    def create_progress(self, progress_id: str, *, transient: bool = False) -> Progress: ...
-
-    def update_progress_state(self, progress_id: str, **state: Any) -> None: ...
+    def verbose_line(self, text: str) -> None: ...
 
     def banner(self, text: str) -> None: ...
 
     def section(self, title: str) -> None: ...
 
-    def line(self, text: str) -> None: ...
+    def set_flag(self, key: str, value: Any) -> None: ...
 
-    def verbose_line(self, text: str) -> None: ...
+    def update_values(self, mapping: Mapping[str, Any]) -> None: ...
 
-    def progress(self, *columns: ProgressColumn, transient: bool = False) -> Progress: ...
+    def render_sections(self, section_ids: Iterable[str]) -> None: ...
+
+    def get_warnings(self) -> List[str]: ...
 
     def iter_warnings(self) -> List[str]: ...
+
+    def create_progress(self, progress_id: str, *, transient: bool = False) -> Progress: ...
+
+    def update_progress_state(self, progress_id: str, **state: Any) -> None: ...
 
 
 class CliOutputManager:
@@ -442,6 +436,11 @@ class CliOutputManager:
 
     def warn(self, text: str) -> None:
         self._warnings.append(text)
+
+    def error(self, text: str) -> None:
+        """Display an error message."""
+        if not self.quiet:
+            self.console.print(f"[bold red]Error:[/bold red] {escape(text)}")
 
     def get_warnings(self) -> List[str]:
         return list(self._warnings)
@@ -536,6 +535,10 @@ class NullCliOutputManager(CliOutputManagerProtocol):
     def warn(self, text: str) -> None:
         self._warnings.append(text)
 
+    def error(self, text: str) -> None:
+        """Discard error output."""
+        pass
+
     def get_warnings(self) -> List[str]:
         return list(self._warnings)
 
@@ -567,6 +570,16 @@ class NullCliOutputManager(CliOutputManagerProtocol):
         return list(self._warnings)
 
 
+
+from src.frame_compare.alignment import models as _alignment_models  # noqa: E402,I001
+
+AudioAlignmentSummary = _alignment_models.AudioAlignmentSummary
+AudioMeasurementDetail = _alignment_models.AudioMeasurementDetail
+AudioAlignmentDisplayData = _alignment_models.AudioAlignmentDisplayData
+_AudioAlignmentSummary = AudioAlignmentSummary
+_AudioMeasurementDetail = AudioMeasurementDetail
+_AudioAlignmentDisplayData = AudioAlignmentDisplayData
+
 __all__ = [
     "CLIAppError",
     "CliOutputManager",
@@ -580,7 +593,6 @@ __all__ = [
     "_AudioAlignmentDisplayData",
     "_AudioAlignmentSummary",
     "_AudioMeasurementDetail",
-    "_ClipPlan",
     "_coerce_str_mapping",
     "_color_text",
     "_ensure_audio_alignment_block",

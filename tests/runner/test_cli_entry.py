@@ -594,9 +594,10 @@ def test_validate_tonemap_overrides_rejects_bad_percentile() -> None:
 def test_cli_tonemap_overrides_mark_provided_keys() -> None:
     cfg = ColorConfig()
     cfg.preset = "contrast"
-    setattr(cfg, "_provided_keys", {"preset"})
+    cfg._provided_keys = {"preset"}
 
-    runner_module._apply_cli_tonemap_overrides(cfg, {"target_nits": 150.0})
+    import src.frame_compare.orchestration.setup as setup_module
+    setup_module._apply_cli_tonemap_overrides(cfg, {"target_nits": 150.0})
 
     provided = getattr(cfg, "_provided_keys", set())
     assert "target_nits" in provided
@@ -1096,7 +1097,9 @@ def test_runner_quiet_uses_null_reporter(
 
     created: list[str] = []
 
-    class _RecorderNull(runner_module.NullCliOutputManager):
+    from src.frame_compare.cli_runtime import CliOutputManager, NullCliOutputManager
+
+    class _RecorderNull(NullCliOutputManager):
         def __init__(self, **kwargs: Any) -> None:
             created.append("null")
             super().__init__(**kwargs)
@@ -1106,8 +1109,9 @@ def test_runner_quiet_uses_null_reporter(
             created.append("cli")
             super().__init__(**kwargs)
 
-    monkeypatch.setattr(runner_module, "NullCliOutputManager", _RecorderNull)
-    monkeypatch.setattr(runner_module, "CliOutputManager", _RecorderCli)
+    import src.frame_compare.orchestration.reporting as reporting_module
+    monkeypatch.setattr(reporting_module, "NullCliOutputManager", _RecorderNull)
+    monkeypatch.setattr(reporting_module, "CliOutputManager", _RecorderCli)
     monkeypatch.setattr(frame_compare, "NullCliOutputManager", _RecorderNull)
     monkeypatch.setattr(frame_compare, "CliOutputManager", _RecorderCli)
 
@@ -1138,7 +1142,8 @@ def test_runner_reporter_factory_overrides_default(
         def __init__(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - should not run
             raise AssertionError("Default CliOutputManager should not be used when a reporter factory is provided")
 
-    monkeypatch.setattr(runner_module, "CliOutputManager", _FailingReporter)
+    from src.frame_compare import cli_runtime
+    monkeypatch.setattr(cli_runtime, "CliOutputManager", _FailingReporter)
 
     factory_calls: list[Path] = []
 
@@ -1186,9 +1191,10 @@ def test_runner_uses_explicit_reporter_instance(
             created.append("default")
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(runner_module, "CliOutputManager", _FailingReporter)
+    from src.frame_compare import cli_runtime
+    monkeypatch.setattr(cli_runtime, "CliOutputManager", _FailingReporter)
     monkeypatch.setattr(frame_compare, "CliOutputManager", _FailingReporter)
-    monkeypatch.setattr(runner_module, "NullCliOutputManager", _FailingReporter)
+    monkeypatch.setattr(cli_runtime, "NullCliOutputManager", _FailingReporter)
     monkeypatch.setattr(frame_compare, "NullCliOutputManager", _FailingReporter)
 
     layout_path = Path(frame_compare.__file__).with_name("cli_layout.v1.json")
@@ -1233,15 +1239,15 @@ def test_runner_handles_existing_event_loop(tmp_path: Path, monkeypatch: pytest.
     files = [media_root / "Alpha.mkv", media_root / "Beta.mkv"]
     metadata = [{"label": "Alpha"}, {"label": "Beta"}]
     plans = [
-        core_module._ClipPlan(path=files[0], metadata={"label": "Alpha"}),
-        core_module._ClipPlan(path=files[1], metadata={"label": "Beta"}),
+        core_module.ClipPlan(path=files[0], metadata={"label": "Alpha"}),
+        core_module.ClipPlan(path=files[1], metadata={"label": "Beta"}),
     ]
     plans[0].use_as_reference = True
 
     _patch_core_helper(monkeypatch, "_discover_media", lambda _root: list(files))
     _patch_core_helper(monkeypatch, "parse_metadata", lambda *_: list(metadata))
     _patch_core_helper(monkeypatch, "_build_plans", lambda *_: list(plans))
-    monkeypatch.setattr(runner_module.core, "_pick_analyze_file", lambda *_args, **_kwargs: files[0])
+    monkeypatch.setattr(core_module, "_pick_analyze_file", lambda *_args, **_kwargs: files[0])
 
     cache_info = FrameMetricsCacheInfo(
         path=workspace / cfg.analysis.frame_data_filename,
@@ -1256,10 +1262,10 @@ def test_runner_handles_existing_event_loop(tmp_path: Path, monkeypatch: pytest.
     _patch_core_helper(monkeypatch, "_build_cache_info", lambda *_: cache_info)
     _patch_core_helper(monkeypatch, "_maybe_apply_audio_alignment", lambda *args, **kwargs: (None, None))
 
-    monkeypatch.setattr(runner_module.vs_core, "configure", lambda **_: None)
-    monkeypatch.setattr(runner_module.vs_core, "set_ram_limit", lambda *_: None)
+    monkeypatch.setattr(vs_core, "configure", lambda **_: None)
+    monkeypatch.setattr(vs_core, "set_ram_limit", lambda *_: None)
     monkeypatch.setattr(
-        runner_module.vs_core,
+        vs_core,
         "init_clip",
         lambda *args, **kwargs: types.SimpleNamespace(
             width=1280,
@@ -1282,16 +1288,19 @@ def test_runner_handles_existing_event_loop(tmp_path: Path, monkeypatch: pytest.
         }
         return [10], {10: "Auto"}, selection_details
 
-    monkeypatch.setattr(runner_module, "select_frames", fake_select)
-    monkeypatch.setattr(runner_module, "selection_details_to_json", _selection_details_to_json)
+    import src.frame_compare.orchestration.phases.analysis as analysis_phase_module
+    import src.frame_compare.orchestration.phases.render as render_phase_module
+
+    monkeypatch.setattr(analysis_phase_module, "select_frames", fake_select)
+    monkeypatch.setattr(analysis_phase_module, "selection_details_to_json", _selection_details_to_json)
     monkeypatch.setattr(
-        runner_module,
+        analysis_phase_module,
         "probe_cached_metrics",
         lambda *_: CacheLoadResult(metrics=None, status="missing", reason=None),
     )
-    monkeypatch.setattr(runner_module, "selection_hash_for_config", lambda *_: "selection-hash")
-    monkeypatch.setattr(runner_module, "write_selection_cache_file", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner_module, "export_selection_metadata", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "selection_hash_for_config", lambda *_: "selection-hash")
+    monkeypatch.setattr(analysis_phase_module, "write_selection_cache_file", lambda *args, **kwargs: None)
+    monkeypatch.setattr(analysis_phase_module, "export_selection_metadata", lambda *args, **kwargs: None)
 
     def fake_generate(
         clips: Sequence[object],
@@ -1308,7 +1317,7 @@ def test_runner_handles_existing_event_loop(tmp_path: Path, monkeypatch: pytest.
         shot.write_text("data", encoding="utf-8")
         return [str(shot)]
 
-    monkeypatch.setattr(runner_module, "generate_screenshots", fake_generate)
+    monkeypatch.setattr(render_phase_module, "generate_screenshots", fake_generate)
 
     tmdb_calls: list[dict[str, object]] = []
 

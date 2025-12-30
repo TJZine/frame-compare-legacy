@@ -123,7 +123,7 @@ def _load_optional_modules() -> Tuple[Any, Any, Any]:
             import librosa  # type: ignore
             import numpy as np  # type: ignore
             import soundfile as sf  # type: ignore
-    except Exception as exc:  # pragma: no cover - optional dependency
+    except (ImportError, AttributeError, TypeError, RuntimeError) as exc:  # pragma: no cover - optional dependency
         message = (
             "Audio alignment requires optional dependencies: numpy, librosa, soundfile."
             if isinstance(exc, ModuleNotFoundError)
@@ -248,6 +248,10 @@ def _extract_audio(
             text=True,
         )
     except subprocess.CalledProcessError as exc:  # pragma: no cover - data dependent
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
         stderr = exc.stderr.strip() if isinstance(exc.stderr, str) else ""
         detail = f": {stderr}" if stderr else ""
         raise AudioAlignmentError(
@@ -313,9 +317,7 @@ def _onset_envelope(
                 hop_length=hop_length,
                 center=True,
             )
-    except AudioAlignmentError:
-        raise
-    except Exception as exc:  # pragma: no cover - optional dependency runtime
+    except RuntimeError as exc:  # pragma: no cover - optional dependency runtime
         message = (
             "Audio alignment failed during onset envelope calculation because an optional "
             f"dependency raised an error: {exc}. Install numpy, librosa, and soundfile "
@@ -504,7 +506,7 @@ def measure_offsets(
         if progress_callback is not None:
             try:
                 progress_callback(1)
-            except Exception:  # pragma: no cover - defensive
+            except Exception:  # noqa: BLE001
                 pass
 
     return results

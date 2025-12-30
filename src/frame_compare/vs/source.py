@@ -11,7 +11,7 @@ from .env import _SOURCE_PREFERENCE, ClipInitError, _get_vapoursynth_module  # p
 from .props import (  # pyright: ignore[reportPrivateUsage]
     _apply_frame_props_dict,  # pyright: ignore[reportPrivateUsage]
     _ensure_std_namespace,  # pyright: ignore[reportPrivateUsage]
-    _snapshot_frame_props,  # pyright: ignore[reportPrivateUsage]
+    snapshot_frame_props,  # pyright: ignore[reportPrivateUsage]
 )
 
 logger = logging.getLogger("src.frame_compare.vs.source")
@@ -68,10 +68,9 @@ def _resolve_core(core: Optional[Any]) -> Any:
             resolved = module_core()
             if resolved is not None:
                 return resolved
-        except TypeError:
-            resolved = module_core
-            if resolved is not None:
-                return resolved
+        except (TypeError, RuntimeError):
+            pass
+
     if module_core is not None and not callable(module_core):
         return module_core
     get_core = getattr(vs_module, "get_core", None)
@@ -245,15 +244,12 @@ def _open_clip_with_sources(
                 if indexing_notifier is not None:
                     indexing_notifier(base_name)
             return source(path, cachefile=str(cache_path))
-        except Exception as exc:
+        except (ClipInitError, VSPluginError, RuntimeError, ValueError) as exc:
             classified = _classify_plugin_exception(plugin, exc)
-            if isinstance(classified, VSPluginError):
-                logger.warning(
-                    "VapourSynth plugin '%s' unavailable: %s", plugin, classified
-                )
+            if classified:
                 errors[plugin] = classified
-                continue
-            raise ClipInitError(f"Failed to open clip '{path}' via {plugin}: {exc}") from exc
+            else:
+                errors[plugin] = VSPluginError(plugin, f"Error initializing {plugin}: {exc}")
 
     if errors:
         detail = "; ".join(f"{name}: {err}" for name, err in errors.items())
@@ -278,7 +274,7 @@ def _slice_clip(clip: Any, *, start: Optional[int] = None, end: Optional[int] = 
             return clip[start:]
         if end is not None:
             return clip[:end]
-    except Exception as exc:  # pragma: no cover - defensive
+    except (IndexError, ValueError, TypeError) as exc:
         raise ClipInitError("Failed to apply trim to clip") from exc
     return clip
 
@@ -301,7 +297,7 @@ def _extend_with_blank(
         if frame_props:
             extension = _apply_frame_props_dict(extension, frame_props)
         return extension + clip
-    except Exception as exc:  # pragma: no cover - defensive
+    except (ValueError, TypeError) as exc:
         raise ClipInitError("Failed to prepend blank frames to clip") from exc
 
 
@@ -312,7 +308,7 @@ def _apply_fps_map(clip: Any, fps_map: Tuple[int, int]) -> Any:
         raise ClipInitError("fps_map denominator must be positive")
     try:
         return std.AssumeFPS(num=num, den=den)
-    except Exception as exc:  # pragma: no cover - defensive
+    except (ValueError, TypeError) as exc:
         raise ClipInitError("Failed to apply FPS mapping to clip") from exc
 
 
@@ -343,7 +339,7 @@ def init_clip(
     cache_root = Path(cache_dir) if cache_dir is not None else path_obj.parent
     try:
         cache_root.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:  # pragma: no cover - defensive
+    except OSError as exc:
         raise ClipInitError(f"Failed to prepare cache directory '{cache_root}': {exc}") from exc
 
     try:
@@ -353,23 +349,21 @@ def init_clip(
             cache_root,
             indexing_notifier=indexing_notifier,
         )
-    except ClipInitError:
-        raise
-    except Exception as exc:  # pragma: no cover - defensive
+    except (OSError, RuntimeError, ValueError) as exc:
         raise ClipInitError(f"Failed to open clip '{path}': {exc}") from exc
 
     try:
         if source_frame_props_hint:
             source_frame_props = dict(source_frame_props_hint)
         else:
-            source_frame_props = dict(_snapshot_frame_props(clip))
-    except Exception:
+            source_frame_props = dict(snapshot_frame_props(clip))
+    except (ValueError, TypeError, KeyError):
         source_frame_props = {}
     if frame_props_sink is not None:
         try:
             frame_props_sink(dict(source_frame_props))
-        except Exception:
-            logger.debug("Failed to record source frame props for %s", path)
+        except (TypeError, ValueError, AttributeError) as exc:  # noqa: BLE001
+            logger.debug("Failed to record source frame props for %s: %s", path, exc)
 
     if trim_start < 0:
         padding_props = _collect_blank_extension_props(source_frame_props)
@@ -465,7 +459,7 @@ def _maybe_inject_dovi_metadata(clip: Any, core: Any, file_path: str, trim_start
 
         return core.std.ModifyFrame(clip, clip, _inject_props)
 
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
         logger.warning("Failed to inject DoVi metadata: %s", exc)
         return clip
 

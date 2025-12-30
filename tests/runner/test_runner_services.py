@@ -9,11 +9,20 @@ from typing import Any, Sequence, cast
 import pytest
 
 from src.datatypes import AppConfig
+from src.frame_compare import media as media_utils
 from src.frame_compare import runner as runner_module
-from src.frame_compare.cli_runtime import ClipPlan, JsonTail
+from src.frame_compare import selection as selection_utils
+from src.frame_compare.cli_runtime import CLIAppError, CliOutputManager, ClipPlan, JsonTail
 from src.frame_compare.interfaces import PublisherIO, ReportRendererProtocol, SlowpicsClientProtocol
-from src.frame_compare.services.alignment import AlignmentRequest, AlignmentResult
-from src.frame_compare.services.metadata import MetadataResolveResult
+from src.frame_compare.services.alignment import AlignmentRequest, AlignmentResult, AlignmentWorkflow
+from src.frame_compare.services.metadata import MetadataResolver, MetadataResolveRequest, MetadataResolveResult
+from src.frame_compare.services.publishers import (
+    ReportPublisher,
+    ReportPublisherRequest,
+    SlowpicsPublisher,
+    SlowpicsPublisherRequest,
+)
+from src.frame_compare.services.setup import DefaultSetupService
 from tests.services.conftest import StubReporter, build_base_json_tail, build_service_config
 
 pytestmark = pytest.mark.usefixtures("runner_vs_core_stub", "dummy_progress")  # type: ignore[attr-defined]
@@ -103,25 +112,25 @@ class _SlowpicsClientStub(SlowpicsClientProtocol):
         return "https://slow.pics/c/test"
 
 
-class _StubReportPublisher(runner_module.ReportPublisher):
+class _StubReportPublisher(ReportPublisher):
     def __init__(self) -> None:
         super().__init__(renderer=_RendererStub(), io=_PublisherIOStub())
-        self.last_request: runner_module.ReportPublisherRequest | None = None
+        self.last_request: ReportPublisherRequest | None = None
         self.call_count = 0
 
-    def publish(self, request: runner_module.ReportPublisherRequest) -> object:  # type: ignore[override]
+    def publish(self, request: ReportPublisherRequest) -> object:  # type: ignore[override]
         self.last_request = request
         self.call_count += 1
         return SimpleNamespace(report_path=None)
 
 
-class _StubSlowpicsPublisher(runner_module.SlowpicsPublisher):
+class _StubSlowpicsPublisher(SlowpicsPublisher):
     def __init__(self) -> None:
         super().__init__(client=_SlowpicsClientStub(), io=_PublisherIOStub())
-        self.last_request: runner_module.SlowpicsPublisherRequest | None = None
+        self.last_request: SlowpicsPublisherRequest | None = None
         self.call_count = 0
 
-    def publish(self, request: runner_module.SlowpicsPublisherRequest) -> object:  # type: ignore[override]
+    def publish(self, request: SlowpicsPublisherRequest) -> object:  # type: ignore[override]
         self.last_request = request
         self.call_count += 1
         return SimpleNamespace(url="https://slow.pics/c/test")
@@ -134,10 +143,11 @@ def _build_dependencies(
     slowpics_publisher: object | None = None,
 ) -> runner_module.RunDependencies:
     return runner_module.RunDependencies(
-        metadata_resolver=cast(runner_module.MetadataResolver, metadata_resolver),
-        alignment_workflow=cast(runner_module.AlignmentWorkflow, alignment_workflow),
-        report_publisher=cast(runner_module.ReportPublisher, report_publisher or _StubReportPublisher()),
-        slowpics_publisher=cast(runner_module.SlowpicsPublisher, slowpics_publisher or _StubSlowpicsPublisher()),
+        metadata_resolver=cast(MetadataResolver, metadata_resolver),
+        alignment_workflow=cast(AlignmentWorkflow, alignment_workflow),
+        report_publisher=cast(ReportPublisher, report_publisher or _StubReportPublisher()),
+        slowpics_publisher=cast(SlowpicsPublisher, slowpics_publisher or _StubSlowpicsPublisher()),
+        setup_service=DefaultSetupService(),
     )
 
 
@@ -145,9 +155,9 @@ class _RecordingMetadataResolver:
     def __init__(self, result: MetadataResolveResult, log: list[str]) -> None:
         self._result = result
         self._log = log
-        self.last_request: runner_module.MetadataResolveRequest | None = None
+        self.last_request: MetadataResolveRequest | None = None
 
-    def resolve(self, request: runner_module.MetadataResolveRequest) -> MetadataResolveResult:
+    def resolve(self, request: MetadataResolveRequest) -> MetadataResolveResult:
         self._log.append("metadata")
         self.last_request = request
         return self._result
@@ -168,12 +178,12 @@ class _RecordingAlignmentWorkflow:
 def test_runner_calls_services_in_order(
     monkeypatch: pytest.MonkeyPatch,
     cli_runner_env: Any,
-    recording_output_manager: runner_module.CliOutputManager,
+    recording_output_manager: CliOutputManager,
 ) -> None:
     """Runner should sequence MetadataResolver before AlignmentWorkflow."""
 
     files = _write_media(cli_runner_env)
-    monkeypatch.setattr(runner_module.media_utils, "discover_media", lambda _root: list(files))
+    monkeypatch.setattr(media_utils, "discover_media", lambda _root: list(files))
     metadata_result = _make_metadata_result(files)
     alignment_result = AlignmentResult(plans=list(metadata_result.plans), summary=None, display=None)
     call_order: list[str] = []
@@ -183,7 +193,7 @@ def test_runner_calls_services_in_order(
     def _stop(*_args: object, **_kwargs: object) -> None:
         raise SentinelError("halt after alignment")
 
-    monkeypatch.setattr(runner_module.selection_utils, "init_clips", _stop)
+    monkeypatch.setattr(selection_utils, "init_clips", _stop)
     dependencies = _build_dependencies(metadata_resolver, alignment_workflow)
     request = runner_module.RunRequest(
         config_path=str(cli_runner_env.config_path),
@@ -204,12 +214,12 @@ def test_runner_calls_services_in_order(
 def test_runner_warns_when_legacy_requested(
     monkeypatch: pytest.MonkeyPatch,
     cli_runner_env: Any,
-    recording_output_manager: runner_module.CliOutputManager,
+    recording_output_manager: CliOutputManager,
 ) -> None:
     """Legacy toggles should be ignored but surfaced as warnings."""
 
     files = _write_media(cli_runner_env)
-    monkeypatch.setattr(runner_module.media_utils, "discover_media", lambda _root: list(files))
+    monkeypatch.setattr(media_utils, "discover_media", lambda _root: list(files))
     metadata_result = _make_metadata_result(files)
     alignment_result = AlignmentResult(plans=list(metadata_result.plans), summary=None, display=None)
     call_order: list[str] = []
@@ -219,7 +229,7 @@ def test_runner_warns_when_legacy_requested(
     def _stop(*_args: object, **_kwargs: object) -> None:
         raise SentinelError("halt after alignment")
 
-    monkeypatch.setattr(runner_module.selection_utils, "init_clips", _stop)
+    monkeypatch.setattr(selection_utils, "init_clips", _stop)
     dependencies = _build_dependencies(metadata_resolver, alignment_workflow)
     request = runner_module.RunRequest(
         config_path=str(cli_runner_env.config_path),
@@ -237,16 +247,16 @@ def test_runner_warns_when_legacy_requested(
 def test_metadata_error_propagates(
     monkeypatch: pytest.MonkeyPatch,
     cli_runner_env: Any,
-    recording_output_manager: runner_module.CliOutputManager,
+    recording_output_manager: CliOutputManager,
 ) -> None:
     """CLIAppError raised by the metadata service should bubble out unchanged."""
 
     files = _write_media(cli_runner_env)
-    monkeypatch.setattr(runner_module.media_utils, "discover_media", lambda _root: list(files))
+    monkeypatch.setattr(media_utils, "discover_media", lambda _root: list(files))
 
     class _ExplodingMetadata:
-        def resolve(self, _request: runner_module.MetadataResolveRequest) -> MetadataResolveResult:
-            raise runner_module.CLIAppError("metadata boom")
+        def resolve(self, _request: MetadataResolveRequest) -> MetadataResolveResult:
+            raise CLIAppError("metadata boom")
 
     metadata_resolver = _ExplodingMetadata()
     alignment_result = AlignmentResult(plans=[], summary=None, display=None)
@@ -257,25 +267,25 @@ def test_metadata_error_propagates(
         reporter=recording_output_manager,
     )
 
-    with pytest.raises(runner_module.CLIAppError, match="metadata boom"):
+    with pytest.raises(CLIAppError, match="metadata boom"):
         runner_module.run(request, dependencies=dependencies)
 
 
 def test_alignment_error_propagates(
     monkeypatch: pytest.MonkeyPatch,
     cli_runner_env: Any,
-    recording_output_manager: runner_module.CliOutputManager,
+    recording_output_manager: CliOutputManager,
 ) -> None:
     """Failures from AlignmentWorkflow should also surface as CLIAppError."""
 
     files = _write_media(cli_runner_env)
-    monkeypatch.setattr(runner_module.media_utils, "discover_media", lambda _root: list(files))
+    monkeypatch.setattr(media_utils, "discover_media", lambda _root: list(files))
     metadata_result = _make_metadata_result(files)
     metadata_resolver = _RecordingMetadataResolver(metadata_result, [])
 
     class _ExplodingAlignment:
         def run(self, _request: AlignmentRequest) -> AlignmentResult:
-            raise runner_module.CLIAppError("alignment boom")
+            raise CLIAppError("alignment boom")
 
     alignment_workflow = _ExplodingAlignment()
     dependencies = _build_dependencies(metadata_resolver, alignment_workflow)
@@ -284,7 +294,7 @@ def test_alignment_error_propagates(
         reporter=recording_output_manager,
     )
 
-    with pytest.raises(runner_module.CLIAppError, match="alignment boom"):
+    with pytest.raises(CLIAppError, match="alignment boom"):
         runner_module.run(request, dependencies=dependencies)
 
 
@@ -319,46 +329,67 @@ def _build_context(tmp_path: Path) -> tuple[runner_module.RunContext, JsonTail, 
 
 
 def test_publish_results_uses_services(tmp_path: Path) -> None:
-    context, json_tail, layout_data, cfg = _build_context(tmp_path)
+    context_old, json_tail, layout_data, cfg = _build_context(tmp_path)
     reporter = StubReporter()
     report_publisher = _StubReportPublisher()
     slowpics_publisher = _StubSlowpicsPublisher()
 
-    slowpics_url, report_path = runner_module._publish_results(
-        context=context,
-        reporter=reporter,
-        cfg=cfg,
-        layout_data=layout_data,
-        json_tail=json_tail,
-        image_paths=["img-a.png"],
-        out_dir=tmp_path,
-        collected_warnings=[],
-        report_enabled=True,
-        root=tmp_path,
-        plans=list(context.plans),
-        frames=[1, 2],
-        selection_details={},
+    deps = _build_dependencies(
+        metadata_resolver=object(),
+        alignment_workflow=object(),
         report_publisher=report_publisher,
         slowpics_publisher=slowpics_publisher,
     )
 
+    from src.frame_compare.orchestration.phases.publish import PublishPhase
+    from src.frame_compare.orchestration.state import CoordinatorContext
+
+    request = runner_module.RunRequest(config_path=None, reporter=reporter)
+    coord_context = CoordinatorContext(request=request, dependencies=deps)
+
+    # Mock env
+    coord_context.env = SimpleNamespace(
+        cfg=cfg,
+        reporter=reporter,
+        out_dir=tmp_path,
+        report_enabled=True,
+        root=tmp_path,
+        collected_warnings=[],
+    )  # type: ignore
+
+    coord_context.json_tail = json_tail
+    coord_context.layout_data = layout_data
+    coord_context.plans = context_old.plans
+    coord_context.image_paths = ["img-a.png"]
+    coord_context.frames = [1, 2]
+    coord_context.selection_details = {}
+
+    coord_context.slowpics_title_inputs = context_old.slowpics_title_inputs
+    coord_context.slowpics_final_title = context_old.slowpics_final_title
+    coord_context.slowpics_resolved_base = context_old.slowpics_resolved_base
+    coord_context.slowpics_tmdb_disclosure_line = context_old.slowpics_tmdb_disclosure_line
+    coord_context.slowpics_verbose_tmdb_tag = context_old.slowpics_verbose_tmdb_tag
+
+    phase = PublishPhase()
+    phase.execute(coord_context)
+
     assert report_publisher.call_count == 1
     assert slowpics_publisher.call_count == 1
-    assert slowpics_url == "https://slow.pics/c/test"
-    assert report_path is None
+    assert coord_context.slowpics_url == "https://slow.pics/c/test"
+    assert coord_context.report_path is None
 
 
 def test_reporter_flags_initialized_with_service_context(
     monkeypatch: pytest.MonkeyPatch,
     cli_runner_env: Any,
-    recording_output_manager: runner_module.CliOutputManager,
+    recording_output_manager: CliOutputManager,
 ) -> None:
     """Runner should set upload/tmdb flags before service sequencing."""
 
     cli_runner_env.cfg.slowpics.auto_upload = True
     cli_runner_env.reinstall(cli_runner_env.cfg)
     files = _write_media(cli_runner_env)
-    monkeypatch.setattr(runner_module.media_utils, "discover_media", lambda _root: list(files))
+    monkeypatch.setattr(media_utils, "discover_media", lambda _root: list(files))
     metadata_result = _make_metadata_result(files)
     alignment_result = AlignmentResult(plans=list(metadata_result.plans), summary=None, display=None)
     call_order: list[str] = []
@@ -368,7 +399,7 @@ def test_reporter_flags_initialized_with_service_context(
     def _stop(*_args: object, **_kwargs: object) -> None:
         raise SentinelError("stop after metadata/alignment")
 
-    monkeypatch.setattr(runner_module.selection_utils, "init_clips", _stop)
+    monkeypatch.setattr(selection_utils, "init_clips", _stop)
     dependencies = _build_dependencies(metadata_resolver, alignment_workflow)
     request = runner_module.RunRequest(
         config_path=str(cli_runner_env.config_path),

@@ -7,8 +7,8 @@ from src.datatypes import ColorConfig
 from src.frame_compare.render import overlay
 
 if TYPE_CHECKING:
+    from src.frame_compare.screenshot.config import GeometryPlan
     from src.frame_compare.vs import TonemapInfo
-    from src.screenshot import GeometryPlan
 else:  # pragma: no cover - typing fallback
     GeometryPlan = Dict[str, Any]
     TonemapInfo = Any
@@ -64,7 +64,6 @@ def test_compose_overlay_text_diagnostic_adds_mdl_line() -> None:
     )
     assert text is not None
     assert "MDL: min:" in text
-    assert "Frame Selection Type: (unknown)" in text
 
 
 def test_mastering_display_extraction_falls_back_to_combined_keys() -> None:

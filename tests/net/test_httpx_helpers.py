@@ -8,9 +8,9 @@ import pytest
 
 from src.frame_compare import net
 
-TimeoutException = getattr(httpx, "TimeoutException")  # type: ignore[attr-defined]
-ReadTimeout = getattr(httpx, "ReadTimeout")  # type: ignore[attr-defined]
-Request = getattr(httpx, "Request")  # type: ignore[attr-defined]
+TimeoutException = httpx.TimeoutException  # type: ignore[attr-defined]
+ReadTimeout = httpx.ReadTimeout  # type: ignore[attr-defined]
+Request = httpx.Request  # type: ignore[attr-defined]
 
 
 class HangingClient:
@@ -27,7 +27,14 @@ class HangingClient:
         self.timeouts.append(timeout)
         seconds = _coerce_timeout(timeout)
         event = asyncio.Event()
-        request = Request("GET", path)
+
+        # Create a minimal request-like object for the ReadTimeout exception
+        class FakeRequest:
+            def __init__(self, url: str) -> None:
+                self.url = url
+
+        request = cast(httpx.Request, FakeRequest("https://example.com/api"))
+
         try:
             await asyncio.wait_for(event.wait(), timeout=seconds)
         except asyncio.TimeoutError as exc:

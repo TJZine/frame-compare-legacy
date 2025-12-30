@@ -48,6 +48,9 @@ class StubReporter(CliPromptProtocol):
     def warn(self, text: str) -> None:
         self.warnings.append(text)
 
+    def error(self, text: str) -> None:
+        self.warnings.append(f"ERROR: {text}")
+
     def get_warnings(self) -> list[str]:
         return list(self.warnings)
 
@@ -74,6 +77,9 @@ class StubReporter(CliPromptProtocol):
 
     def progress(self, *columns: Any, transient: bool = False) -> Any:  # pragma: no cover - unused
         return None
+
+    def confirm(self, text: str, *, default: bool = True) -> bool:
+        return default
 
     def iter_warnings(self) -> list[str]:
         return list(self.warnings)

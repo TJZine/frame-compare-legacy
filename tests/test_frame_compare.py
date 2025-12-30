@@ -10,13 +10,23 @@ Only shim delegation tests remain here until the compatibility layer is retired.
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
 
-import frame_compare
 import src.frame_compare.core as core_module
 from src.frame_compare import runner as runner_module
+
+# Dynamically load the root frame_compare.py shim
+_shim_path = Path(__file__).parents[1] / "frame_compare.py"
+_spec = importlib.util.spec_from_file_location("frame_compare_shim", _shim_path)
+if _spec is None or _spec.loader is None:
+    raise ImportError(f"Could not load shim from {_shim_path}")
+frame_compare = importlib.util.module_from_spec(_spec)
+sys.modules["frame_compare_shim"] = frame_compare
+_spec.loader.exec_module(frame_compare)
 
 pytestmark = pytest.mark.usefixtures("runner_vs_core_stub")  # type: ignore[attr-defined]
 
@@ -25,7 +35,7 @@ def test_run_cli_delegates_to_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     """Ensure the frame_compare.run_cli shim forwards requests to runner.run."""
 
     cfg = core_module._fresh_app_config()
-    dummy_result = frame_compare.RunResult(
+    dummy_result = runner_module.RunResult(
         files=[],
         frames=[],
         out_dir=tmp_path,
@@ -45,7 +55,7 @@ def test_run_cli_delegates_to_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         request: runner_module.RunRequest,
         *,
         dependencies: runner_module.RunDependencies | None = None,
-    ) -> frame_compare.RunResult:
+    ) -> runner_module.RunResult:
         nonlocal captured_request, captured_dependencies
         captured_request = request
         captured_dependencies = dependencies
