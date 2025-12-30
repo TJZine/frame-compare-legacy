@@ -156,6 +156,40 @@
 - *2025-11-10:* Ensured runner funnels audio alignment through `core._maybe_apply_audio_alignment` again (restoring the test/mocking seam) and deep-copied the JSON-tail audio block before building CLI layout views so manual trims, VSPreview offsets, and reference trims persist. Added regression coverage, reran the full suite, and cleaned up Ruff/Pyright diagnostics that surfaced after the refactor.
 
 
+## [0.0.15](https://github.com/TJZine/frame-compare-legacy/compare/frame-compare-v0.0.14...frame-compare-v0.0.15) (2025-12-30)
+
+
+### Features
+
+* enhance security by validating webhook URLs and limiting expression engine complexity ([dfaa753](https://github.com/TJZine/frame-compare-legacy/commit/dfaa753e9f20e47c77b2b4703a858307b844cbac))
+
+
+### Bug Fixes
+
+* adjust diagnostic overlay position ([c222fe7](https://github.com/TJZine/frame-compare-legacy/commit/c222fe7c10eb95940836307b66667053be98296f))
+* align vspreview metadata and report handling ([77be117](https://github.com/TJZine/frame-compare-legacy/commit/77be11715aa77cb7045f20d2f21f74953dc987d8))
+* correct error handling, indentation, and unreachable test code ([6b61905](https://github.com/TJZine/frame-compare-legacy/commit/6b6190522b1fe8b7d523357d1c6b6a26596b96c7))
+* harden layout eval and typing ([4aac001](https://github.com/TJZine/frame-compare-legacy/commit/4aac001cfff7b7470005f14d47f9855876345aaf))
+* reorder SetFrameProps call signature to prefer bound method ([dbd3425](https://github.com/TJZine/frame-compare-legacy/commit/dbd34256abca3bd665e6c9ef5e0de359ee75010a))
+* typeerror fix ([55c86c6](https://github.com/TJZine/frame-compare-legacy/commit/55c86c6ccb744a085984a732fd8c05ca16039440))
+
+
+### Refactors
+
+* centralize TTY stdin mocking in tests ([d00360f](https://github.com/TJZine/frame-compare-legacy/commit/d00360f749462c5b15abe5e4ea71a42ea232433e))
+* decompose audio alignment runner into a dedicated package ([780290b](https://github.com/TJZine/frame-compare-legacy/commit/780290b3ddda874d0e52b7204bb27f620c5af97f))
+* exception handling across multiple modules ([6bada30](https://github.com/TJZine/frame-compare-legacy/commit/6bada308f0603d8607edca1d59a6dea136818c1b))
+* introduce orchestration package  ([495223f](https://github.com/TJZine/frame-compare-legacy/commit/495223f68113e693a88272b94d42b85652b635fc))
+* introduce orchestration package and move CLI setup and reporting logic ([edd7e84](https://github.com/TJZine/frame-compare-legacy/commit/edd7e84e00586fc1404920915c267c34c1df372f))
+* modularize cli_layout.py ([00e708e](https://github.com/TJZine/frame-compare-legacy/commit/00e708ec9f05cdab84af709e37f757849b60165f))
+* modularize render.py ([7bc73e3](https://github.com/TJZine/frame-compare-legacy/commit/7bc73e335ad7e679b63250dc7370483d76850147))
+* reimplement audio alignment with a new service architecture ([5f50cd8](https://github.com/TJZine/frame-compare-legacy/commit/5f50cd8b5362a4c35b4e64026372dd5b8de7e18f))
+
+
+### Documentation
+
+* update agents.md ([84235f0](https://github.com/TJZine/frame-compare-legacy/commit/84235f00c8f447c5ca9853dcac8462ce7f487cba))
+
 ## [0.0.14](https://github.com/TJZine/frame-compare/compare/frame-compare-v0.0.13...frame-compare-v0.0.14) (2025-11-24)
 
 

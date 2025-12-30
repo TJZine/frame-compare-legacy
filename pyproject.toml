@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "frame-compare"
-version = "0.0.14"
+version = "0.0.15"
 description = "Frame comparison CLI and library"
 readme = "README.md"
 license = { file = "LICENSE" }
